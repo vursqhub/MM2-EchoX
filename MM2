@@ -57,7 +57,6 @@ _G._EchoXDrawings = _G._EchoXDrawings or {}
 local function TD(t)
     local ok, d = pcall(function() return Drawing.new(t) end)
     if ok and d then table.insert(_G._EchoXDrawings, d); return d end
-    -- Fallback stub so the rest of the script never errors on nil
     return setmetatable({}, { __index = function() return function() end end, __newindex = function() end })
 end
 
@@ -79,8 +78,8 @@ local LDefault = {
     FogEnd         = Lighting.FogEnd,
     FogStart       = Lighting.FogStart,
 }
-local AtmoDefault  = {}
-local PostFXSaved  = {}
+local AtmoDefault = {}
+local PostFXSaved = {}
 
 local _ia = Lighting:FindFirstChildOfClass("Atmosphere")
 if _ia then
@@ -144,7 +143,7 @@ local function Drop(name)
 end
 
 -- ============================================================
--- // MISC STATE  ← FIXED: each variable gets its own local
+-- // MISC STATE
 -- ============================================================
 local ESPObjects        = {}
 local TweenTPActive     = false
@@ -208,12 +207,12 @@ local function UpdateMM2RoleESP()
             if enabled then
                 if not hl then
                     hl = Instance.new("Highlight")
-                    hl.Name               = name
-                    hl.FillColor          = color
-                    hl.OutlineColor       = color
-                    hl.FillTransparency   = 0.5
-                    hl.OutlineTransparency= 0
-                    hl.Parent             = char
+                    hl.Name                = name
+                    hl.FillColor           = color
+                    hl.OutlineColor        = color
+                    hl.FillTransparency    = 0.5
+                    hl.OutlineTransparency = 0
+                    hl.Parent              = char
                 end
             else
                 if hl then hl:Destroy() end
@@ -419,11 +418,11 @@ local function RebuildSkeleton(d, char)
 end
 
 local function ClearESPEntry(d)
-    pcall(function() d.Box.Visible      = false end)
-    pcall(function() d.Name.Visible     = false end)
-    pcall(function() d.Distance.Visible = false end)
-    pcall(function() d.Tracer.Visible   = false end)
-    pcall(function() d.TeamLabel.Visible= false end)
+    pcall(function() d.Box.Visible       = false end)
+    pcall(function() d.Name.Visible      = false end)
+    pcall(function() d.Distance.Visible  = false end)
+    pcall(function() d.Tracer.Visible    = false end)
+    pcall(function() d.TeamLabel.Visible = false end)
     pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
     for _, s in ipairs(d.Skeleton) do pcall(function() s.line.Visible = false end) end
 end
@@ -448,10 +447,10 @@ local function CreateESPForPlayer(player)
     if player == LocalPlayer or ESPObjects[player] then return end
     local col = State.ESP.Color
     local d   = {}
-    d.Box       = TD("Square"); d.Box.Visible       = false; d.Box.Color       = col; d.Box.Thickness  = 1;  d.Box.Filled     = false
-    d.Name      = TD("Text");   d.Name.Visible      = false; d.Name.Color      = col; d.Name.Size      = 14; d.Name.Center    = true; d.Name.Outline   = true
-    d.Distance  = TD("Text");   d.Distance.Visible  = false; d.Distance.Color  = col; d.Distance.Size  = 12; d.Distance.Center= true; d.Distance.Outline= true
-    d.Tracer    = TD("Line");   d.Tracer.Visible    = false; d.Tracer.Color    = col; d.Tracer.Thickness= 1
+    d.Box       = TD("Square"); d.Box.Visible       = false; d.Box.Color       = col; d.Box.Thickness   = 1;  d.Box.Filled      = false
+    d.Name      = TD("Text");   d.Name.Visible      = false; d.Name.Color      = col; d.Name.Size       = 14; d.Name.Center     = true; d.Name.Outline    = true
+    d.Distance  = TD("Text");   d.Distance.Visible  = false; d.Distance.Color  = col; d.Distance.Size   = 12; d.Distance.Center = true; d.Distance.Outline= true
+    d.Tracer    = TD("Line");   d.Tracer.Visible    = false; d.Tracer.Color    = col; d.Tracer.Thickness = 1
     d.Highlight = Instance.new("Highlight")
     d.Highlight.FillTransparency    = 0.5
     d.Highlight.OutlineTransparency = 0
@@ -503,10 +502,8 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
     if col ~= d.lastColor or State.ESP.Rainbow then
         d.lastColor = col
         pcall(function()
-            d.Box.Color      = col; d.Name.Color = col; d.Distance.Color = col
-            d.Tracer.Color   = col
-            d.Highlight.FillColor    = col
-            d.Highlight.OutlineColor = col
+            d.Box.Color = col; d.Name.Color = col; d.Distance.Color = col; d.Tracer.Color = col
+            d.Highlight.FillColor = col; d.Highlight.OutlineColor = col
             for _, s in ipairs(d.Skeleton) do s.line.Color = col end
         end)
     end
@@ -516,17 +513,17 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
     local feetPos    = rootPos - Vector3.new(0, 3, 0)
     local headTopPos = headPos + Vector3.new(0, 0.6, 0)
 
-    local rootSP,  rootOn  = W2S(rootPos)
-    local headSP,  headOn  = W2S(headPos)
-    local feetSP,  _       = W2S(feetPos)
-    local headTopSP, _     = W2S(headTopPos)
+    local rootSP,    rootOn    = W2S(rootPos)
+    local headSP,    headOn    = W2S(headPos)
+    local feetSP,    _         = W2S(feetPos)
+    local headTopSP, _         = W2S(headTopPos)
 
     if not rootOn then
         pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
         return
     end
     if State.ESP.MaxDist > 0 and selfRoot
-       and (selfRoot.Position - rootPos).Magnitude > State.ESP.MaxDist then
+    and (selfRoot.Position - rootPos).Magnitude > State.ESP.MaxDist then
         pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
         return
     end
@@ -569,8 +566,8 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
 
     if State.ESP.Distance then
         pcall(function()
-            local dist       = selfRoot and math.floor((selfRoot.Position - rootPos).Magnitude) or 0
-            d.Distance.Text  = tostring(dist) .. " st"
+            local dist          = selfRoot and math.floor((selfRoot.Position - rootPos).Magnitude) or 0
+            d.Distance.Text     = tostring(dist) .. " st"
             d.Distance.Position = Vector2.new(rootSP.X, math.max(feetSP.Y, rootSP.Y) + 4)
             d.Distance.Visible  = true
         end)
@@ -787,12 +784,12 @@ local function SetupFly()
         local v = r:FindFirstChild("FlyBV"); local g = r:FindFirstChild("FlyBG")
         if not v or not g then return end
         local cam = GetCamera(); local d = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W)            then d = d + cam.CFrame.LookVector  end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S)            then d = d - cam.CFrame.LookVector  end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A)            then d = d - cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D)            then d = d + cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space)        then d = d + Vector3.new(0,  1, 0)  end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)  then d = d - Vector3.new(0,  1, 0)  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.W)           then d = d + cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S)           then d = d - cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A)           then d = d - cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D)           then d = d + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)       then d = d + Vector3.new(0,  1, 0)  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then d = d - Vector3.new(0,  1, 0)  end
         v.Velocity = d.Magnitude > 0 and (d.Unit * State.Movement.FlySpeed) or Vector3.zero
         g.CFrame   = cam.CFrame
     end))
@@ -934,8 +931,11 @@ local function SetupOrbit()
         if not OrbitTarget or not OrbitTarget.Parent then OrbitTarget = nil; return end
         OrbitAngle = OrbitAngle + math.rad(State.Movement.OrbitSpeed) * dt * 60
         local op = OrbitTarget.Position
-                 + Vector3.new(math.cos(OrbitAngle) * State.Movement.OrbitRadius, 0,
-                               math.sin(OrbitAngle) * State.Movement.OrbitRadius)
+                 + Vector3.new(
+                     math.cos(OrbitAngle) * State.Movement.OrbitRadius,
+                     0,
+                     math.sin(OrbitAngle) * State.Movement.OrbitRadius
+                   )
         root.CFrame = CFrame.new(op, OrbitTarget.Position)
     end))
 end
@@ -970,16 +970,19 @@ local function SetupHoverPlayer()
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and IsAlive(p) then
                     local r = GetRoot(p)
-                    if r then local d = (r.Position - root.Position).Magnitude; if d < bestD then bestD = d; best = p end end
+                    if r then
+                        local d = (r.Position - root.Position).Magnitude
+                        if d < bestD then bestD = d; best = p end
+                    end
                 end
             end
             HoverTarget = best
         end
         if not HoverTarget or not IsAlive(HoverTarget) then HoverTarget = nil; return end
         local tr = GetRoot(HoverTarget); if not tr then return end
-        local targetPos  = tr.Position + Vector3.new(0, State.Movement.HoverHeight, 0)
-        local look       = tr.CFrame.LookVector
-        local flatLook   = Vector3.new(look.X, 0, look.Z)
+        local targetPos = tr.Position + Vector3.new(0, State.Movement.HoverHeight, 0)
+        local look      = tr.CFrame.LookVector
+        local flatLook  = Vector3.new(look.X, 0, look.Z)
         if flatLook.Magnitude < 0.01 then flatLook = Vector3.new(0, 0, 1) end
         root.CFrame = root.CFrame:Lerp(
             CFrame.new(targetPos, targetPos + flatLook),
@@ -1073,9 +1076,9 @@ local function startCoinFarmLoop()
             local hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(0.5); break end
             local coin, dist = getNearestCoin(hrp); if not coin then task.wait(0.5); break end
             _visitedCoins[coin] = true
-            local duration  = math.max(dist / State.Farming.CoinFarmSpeed, 0.2)
-            local coinPos   = coin.Position
-            local targetCF  = CFrame.new(coinPos.X, coinPos.Y + (hrp.Size.Y / 2), coinPos.Z)
+            local duration = math.max(dist / State.Farming.CoinFarmSpeed, 0.2)
+            local coinPos  = coin.Position
+            local targetCF = CFrame.new(coinPos.X, coinPos.Y + (hrp.Size.Y / 2), coinPos.Z)
             local tw = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), { CFrame = targetCF })
             tw:Play(); tw.Completed:Wait()
             task.wait(math.max(State.Farming.CoinFarmDelay, 0))
@@ -1165,12 +1168,12 @@ end
 
 local function SerializeState()
     return {
-        Aimbot    = { Enabled=State.Aimbot.Enabled, KeepLocked=State.Aimbot.KeepLocked, Smoothness=State.Aimbot.Smoothness, FOV=State.Aimbot.FOV, Color=C3S(State.Aimbot.Color), LockKey=State.Aimbot.LockKey, WallCheck=State.Aimbot.WallCheck, Prediction=State.Aimbot.Prediction, PredictionStrength=State.Aimbot.PredictionStrength, TeamCheck=State.Aimbot.TeamCheck, RainbowFOV=State.Aimbot.RainbowFOV, RainbowSpeed=State.Aimbot.RainbowSpeed, TargetPart=State.Aimbot.TargetPart },
-        ESP       = { Enabled=State.ESP.Enabled, Box=State.ESP.Box, Skeleton=State.ESP.Skeleton, Names=State.ESP.Names, Distance=State.ESP.Distance, Highlight=State.ESP.Highlight, Tracer=State.ESP.Tracer, Color=C3S(State.ESP.Color), Rainbow=State.ESP.Rainbow, RainbowSpeed=State.ESP.RainbowSpeed, TeamCheck=State.ESP.TeamCheck, TeamMode=State.ESP.TeamMode, TeamColor=C3S(State.ESP.TeamColor), MaxDist=State.ESP.MaxDist },
-        RoleESP   = { InnocentEnabled=State.RoleESP.InnocentEnabled, SheriffEnabled=State.RoleESP.SheriffEnabled, MurdererEnabled=State.RoleESP.MurdererEnabled, GunDropEnabled=State.RoleESP.GunDropEnabled, InnocentColor=C3S(State.RoleESP.InnocentColor), SheriffColor=C3S(State.RoleESP.SheriffColor), MurdererColor=C3S(State.RoleESP.MurdererColor), GunDropColor=C3S(State.RoleESP.GunDropColor) },
-        Movement  = { WalkSpeed=State.Movement.WalkSpeed, WalkSpeedValue=State.Movement.WalkSpeedValue, JumpPower=State.Movement.JumpPower, JumpPowerValue=State.Movement.JumpPowerValue, InfJump=State.Movement.InfJump, Fly=State.Movement.Fly, FlySpeed=State.Movement.FlySpeed, Spin=State.Movement.Spin, SpinSpeed=State.Movement.SpinSpeed, TPWalk=State.Movement.TPWalk, TPWalkTween=State.Movement.TPWalkTween, TPWalkSpeed=State.Movement.TPWalkSpeed, ClickTP=State.Movement.ClickTP, ClickTweenTP=State.Movement.ClickTweenTP, ClickTweenTPSpeed=State.Movement.ClickTweenTPSpeed, Noclip=State.Movement.Noclip, GodMode=State.Movement.GodMode, Orbit=State.Movement.Orbit, OrbitSpeed=State.Movement.OrbitSpeed, OrbitRadius=State.Movement.OrbitRadius, OrbitMode=State.Movement.OrbitMode, OrbitCooldown=State.Movement.OrbitCooldown, HoverPlayer=State.Movement.HoverPlayer, HoverHeight=State.Movement.HoverHeight, HoverSpeed=State.Movement.HoverSpeed, HoverMode=State.Movement.HoverMode },
-        Farming   = { CoinFarmSpeed=State.Farming.CoinFarmSpeed, CoinFarmDelay=State.Farming.CoinFarmDelay },
-        Triggerbot= { Enabled=State.Triggerbot.Enabled, Spam=State.Triggerbot.Spam, WallCheck=State.Triggerbot.WallCheck, TeamCheck=State.Triggerbot.TeamCheck, Radius=State.Triggerbot.Radius, Delay=State.Triggerbot.Delay },
+        Aimbot     = { Enabled=State.Aimbot.Enabled, KeepLocked=State.Aimbot.KeepLocked, Smoothness=State.Aimbot.Smoothness, FOV=State.Aimbot.FOV, Color=C3S(State.Aimbot.Color), LockKey=State.Aimbot.LockKey, WallCheck=State.Aimbot.WallCheck, Prediction=State.Aimbot.Prediction, PredictionStrength=State.Aimbot.PredictionStrength, TeamCheck=State.Aimbot.TeamCheck, RainbowFOV=State.Aimbot.RainbowFOV, RainbowSpeed=State.Aimbot.RainbowSpeed, TargetPart=State.Aimbot.TargetPart },
+        ESP        = { Enabled=State.ESP.Enabled, Box=State.ESP.Box, Skeleton=State.ESP.Skeleton, Names=State.ESP.Names, Distance=State.ESP.Distance, Highlight=State.ESP.Highlight, Tracer=State.ESP.Tracer, Color=C3S(State.ESP.Color), Rainbow=State.ESP.Rainbow, RainbowSpeed=State.ESP.RainbowSpeed, TeamCheck=State.ESP.TeamCheck, TeamMode=State.ESP.TeamMode, TeamColor=C3S(State.ESP.TeamColor), MaxDist=State.ESP.MaxDist },
+        RoleESP    = { InnocentEnabled=State.RoleESP.InnocentEnabled, SheriffEnabled=State.RoleESP.SheriffEnabled, MurdererEnabled=State.RoleESP.MurdererEnabled, GunDropEnabled=State.RoleESP.GunDropEnabled, InnocentColor=C3S(State.RoleESP.InnocentColor), SheriffColor=C3S(State.RoleESP.SheriffColor), MurdererColor=C3S(State.RoleESP.MurdererColor), GunDropColor=C3S(State.RoleESP.GunDropColor) },
+        Movement   = { WalkSpeed=State.Movement.WalkSpeed, WalkSpeedValue=State.Movement.WalkSpeedValue, JumpPower=State.Movement.JumpPower, JumpPowerValue=State.Movement.JumpPowerValue, InfJump=State.Movement.InfJump, Fly=State.Movement.Fly, FlySpeed=State.Movement.FlySpeed, Spin=State.Movement.Spin, SpinSpeed=State.Movement.SpinSpeed, TPWalk=State.Movement.TPWalk, TPWalkTween=State.Movement.TPWalkTween, TPWalkSpeed=State.Movement.TPWalkSpeed, ClickTP=State.Movement.ClickTP, ClickTweenTP=State.Movement.ClickTweenTP, ClickTweenTPSpeed=State.Movement.ClickTweenTPSpeed, Noclip=State.Movement.Noclip, GodMode=State.Movement.GodMode, Orbit=State.Movement.Orbit, OrbitSpeed=State.Movement.OrbitSpeed, OrbitRadius=State.Movement.OrbitRadius, OrbitMode=State.Movement.OrbitMode, OrbitCooldown=State.Movement.OrbitCooldown, HoverPlayer=State.Movement.HoverPlayer, HoverHeight=State.Movement.HoverHeight, HoverSpeed=State.Movement.HoverSpeed, HoverMode=State.Movement.HoverMode },
+        Farming    = { CoinFarmSpeed=State.Farming.CoinFarmSpeed, CoinFarmDelay=State.Farming.CoinFarmDelay },
+        Triggerbot = { Enabled=State.Triggerbot.Enabled, Spam=State.Triggerbot.Spam, WallCheck=State.Triggerbot.WallCheck, TeamCheck=State.Triggerbot.TeamCheck, Radius=State.Triggerbot.Radius, Delay=State.Triggerbot.Delay },
         Fullbright=State.Fullbright, NoFog=State.NoFog, NoShadows=State.NoShadows,
         FPSBoost=State.FPSBoost, AntiFling=State.AntiFling, CameraFOV=State.CameraFOV,
     }
@@ -1201,9 +1204,9 @@ end
 local function CFGSave(name)
     if not writefile then return false, "writefile not available" end
     CFGEnsureFolder()
-    local ok, data = pcall(SerializeState); if not ok then return false, "serialization failed" end
-    local ok2, json = pcall(HttpService.JSONEncode, HttpService, data); if not ok2 then return false, "JSON encode failed" end
-    local ok3 = pcall(writefile, CFG_FOLDER .. "/" .. name .. CFG_EXT, json); if not ok3 then return false, "write failed" end
+    local ok, data   = pcall(SerializeState);               if not ok  then return false, "serialization failed" end
+    local ok2, json  = pcall(HttpService.JSONEncode, HttpService, data); if not ok2 then return false, "JSON encode failed" end
+    local ok3        = pcall(writefile, CFG_FOLDER .. "/" .. name .. CFG_EXT, json); if not ok3 then return false, "write failed" end
     return true
 end
 
@@ -1265,16 +1268,13 @@ local function CFGDelete(name)
 end
 
 -- ============================================================
--- // RAYFIELD WINDOW
+-- // RAYFIELD WINDOW  ← FIXED: removed Icon=0, ShowText, ToggleUIKeybind
 -- ============================================================
 local Window = Rayfield:CreateWindow({
     Name                   = "MM2 | EchoX",
-    Icon                   = 0,
     LoadingTitle           = "MM2 | EchoX",
     LoadingSubtitle        = "Made by EchoX",
-    ShowText               = "EchoX",
     Theme                  = "Default",
-    ToggleUIKeybind        = "RightAlt",
     DisableRayfieldPrompts = true,
     DisableBuildWarnings   = true,
     ConfigurationSaving    = { Enabled = false },
@@ -1304,9 +1304,9 @@ AimbotTab:CreateToggle({ Name="Prediction",    CurrentValue=false, Callback=func
 AimbotTab:CreateToggle({ Name="Team Check",    CurrentValue=false, Callback=function(v) State.Aimbot.TeamCheck=v  end })
 AimbotTab:CreateToggle({ Name="Rainbow FOV",   CurrentValue=false, Callback=function(v) State.Aimbot.RainbowFOV=v end })
 AimbotTab:CreateSlider({ Name="Prediction Strength", Range={1,200},  Increment=1, Suffix="ms", CurrentValue=65,  Callback=function(v) State.Aimbot.PredictionStrength=v/1000 end })
-AimbotTab:CreateSlider({ Name="Aim Speed",           Range={1,100},  Increment=1, Suffix="%",  CurrentValue=50,  Callback=function(v) State.Aimbot.Smoothness=v/100 end })
-AimbotTab:CreateSlider({ Name="FOV Radius",          Range={10,500}, Increment=5, Suffix="px", CurrentValue=150, Callback=function(v) State.Aimbot.FOV=v end })
-AimbotTab:CreateSlider({ Name="Rainbow Speed",       Range={1,20},   Increment=1,              CurrentValue=4,   Callback=function(v) State.Aimbot.RainbowSpeed=v/10 end })
+AimbotTab:CreateSlider({ Name="Aim Speed",           Range={1,100},  Increment=1, Suffix="%",  CurrentValue=50,  Callback=function(v) State.Aimbot.Smoothness=v/100        end })
+AimbotTab:CreateSlider({ Name="FOV Radius",          Range={10,500}, Increment=5, Suffix="px", CurrentValue=150, Callback=function(v) State.Aimbot.FOV=v                   end })
+AimbotTab:CreateSlider({ Name="Rainbow Speed",       Range={1,20},   Increment=1,              CurrentValue=4,   Callback=function(v) State.Aimbot.RainbowSpeed=v/10       end })
 AimbotTab:CreateColorPicker({ Name="FOV Color", Color=Color3.fromRGB(255,0,0), Callback=function(v) State.Aimbot.Color=v end })
 AimbotTab:CreateSection("Target Bone")
 AimbotTab:CreateDropdown({ Name="Target Part", Options={"Head","Torso","HumanoidRootPart"}, CurrentOption={"Head"}, MultipleOptions=false,
@@ -1317,11 +1317,11 @@ AimbotTab:CreateDropdown({ Name="Aim Hold Key",
     CurrentOption={"MouseButton2"}, MultipleOptions=false,
     Callback=function(opts) State.Aimbot.LockKey=type(opts)=="table" and opts[1] or opts end })
 AimbotTab:CreateSection("Triggerbot")
-AimbotTab:CreateToggle({ Name="Enable Triggerbot", CurrentValue=false, Callback=function(v) State.Triggerbot.Enabled=v  end })
-AimbotTab:CreateToggle({ Name="Spam Mode",         CurrentValue=false, Callback=function(v) State.Triggerbot.Spam=v      end })
-AimbotTab:CreateToggle({ Name="Wall Check (TB)",   CurrentValue=false, Callback=function(v) State.Triggerbot.WallCheck=v end })
-AimbotTab:CreateToggle({ Name="Team Check (TB)",   CurrentValue=false, Callback=function(v) State.Triggerbot.TeamCheck=v end })
-AimbotTab:CreateSlider({ Name="Crosshair Radius",  Range={1,80},  Increment=1, Suffix="px", CurrentValue=15, Callback=function(v) State.Triggerbot.Radius=v end })
+AimbotTab:CreateToggle({ Name="Enable Triggerbot", CurrentValue=false, Callback=function(v) State.Triggerbot.Enabled=v   end })
+AimbotTab:CreateToggle({ Name="Spam Mode",         CurrentValue=false, Callback=function(v) State.Triggerbot.Spam=v       end })
+AimbotTab:CreateToggle({ Name="Wall Check (TB)",   CurrentValue=false, Callback=function(v) State.Triggerbot.WallCheck=v  end })
+AimbotTab:CreateToggle({ Name="Team Check (TB)",   CurrentValue=false, Callback=function(v) State.Triggerbot.TeamCheck=v  end })
+AimbotTab:CreateSlider({ Name="Crosshair Radius",  Range={1,80},  Increment=1, Suffix="px", CurrentValue=15, Callback=function(v) State.Triggerbot.Radius=v     end })
 AimbotTab:CreateSlider({ Name="Spam Delay",        Range={1,100}, Increment=1, Suffix="ms", CurrentValue=80, Callback=function(v) State.Triggerbot.Delay=v/1000 end })
 
 -- ============================================================
@@ -1337,10 +1337,10 @@ ESPTab:CreateToggle({ Name="Highlight",   CurrentValue=false, Callback=function(
 ESPTab:CreateToggle({ Name="Tracer",      CurrentValue=false, Callback=function(v) State.ESP.Tracer=v     end })
 ESPTab:CreateToggle({ Name="Rainbow ESP", CurrentValue=false, Callback=function(v) State.ESP.Rainbow=v    end })
 ESPTab:CreateToggle({ Name="Team Check",  CurrentValue=false, Callback=function(v) State.ESP.TeamCheck=v  end })
-ESPTab:CreateSlider({ Name="Render Distance", Range={50,2000}, Increment=50, Suffix=" st", CurrentValue=500, Callback=function(v) State.ESP.MaxDist=v end })
-ESPTab:CreateSlider({ Name="Rainbow Speed",   Range={1,20},    Increment=1,              CurrentValue=4,   Callback=function(v) State.ESP.RainbowSpeed=v/10 end })
-ESPTab:CreateColorPicker({ Name="ESP Color",  Color=Color3.fromRGB(255,255,255),          Callback=function(v) State.ESP.Color=v     end })
-ESPTab:CreateColorPicker({ Name="Team Color", Color=Color3.fromRGB(0,255,120),            Callback=function(v) State.ESP.TeamColor=v end })
+ESPTab:CreateSlider({ Name="Render Distance", Range={50,2000}, Increment=50, Suffix=" st", CurrentValue=500, Callback=function(v) State.ESP.MaxDist=v           end })
+ESPTab:CreateSlider({ Name="Rainbow Speed",   Range={1,20},    Increment=1,              CurrentValue=4,   Callback=function(v) State.ESP.RainbowSpeed=v/10    end })
+ESPTab:CreateColorPicker({ Name="ESP Color",  Color=Color3.fromRGB(255,255,255), Callback=function(v) State.ESP.Color=v     end })
+ESPTab:CreateColorPicker({ Name="Team Color", Color=Color3.fromRGB(0,255,120),   Callback=function(v) State.ESP.TeamColor=v end })
 ESPTab:CreateDropdown({ Name="Team Mode", Options={"hide","color"}, CurrentOption={"hide"}, MultipleOptions=false,
     Callback=function(opts) State.ESP.TeamMode=type(opts)=="table" and opts[1] or opts end })
 ESPTab:CreateSection("Role Highlights")
@@ -1359,7 +1359,8 @@ ESPTab:CreateColorPicker({ Name="Gun Drop Color", Color=Color3.fromRGB(255,255,0
 -- ============================================================
 MovementTab:CreateSection("Walk Speed")
 MovementTab:CreateToggle({ Name="Custom WalkSpeed", CurrentValue=false, Callback=function(v) State.Movement.WalkSpeed=v; ApplyWalkSpeed() end })
-MovementTab:CreateSlider({ Name="Walk Speed", Range={0,500}, Increment=1, CurrentValue=16, Callback=function(v) State.Movement.WalkSpeedValue=v; if State.Movement.WalkSpeed then ApplyWalkSpeed() end end })
+MovementTab:CreateSlider({ Name="Walk Speed", Range={0,500}, Increment=1, CurrentValue=16,
+    Callback=function(v) State.Movement.WalkSpeedValue=v; if State.Movement.WalkSpeed then ApplyWalkSpeed() end end })
 MovementTab:CreateSection("Jump")
 MovementTab:CreateToggle({ Name="Custom Jump Power", CurrentValue=false,
     Callback=function(v) State.Movement.JumpPower=v; local h=GetHumanoid(LocalPlayer); if h then h.JumpPower=v and State.Movement.JumpPowerValue or Defaults.JumpPower end end })
@@ -1370,16 +1371,16 @@ MovementTab:CreateSection("Fly")
 MovementTab:CreateToggle({ Name="Fly",       CurrentValue=false, Callback=function(v) State.Movement.Fly=v; SetupFly() end })
 MovementTab:CreateSlider({ Name="Fly Speed", Range={0,300},    Increment=1, CurrentValue=50, Callback=function(v) State.Movement.FlySpeed=v end })
 MovementTab:CreateSection("Utility")
-MovementTab:CreateToggle({ Name="Noclip",     CurrentValue=false, Callback=function(v) State.Movement.Noclip=v;    SetupNoclip()    end })
-MovementTab:CreateToggle({ Name="GodMode",    CurrentValue=false, Callback=function(v) State.Movement.GodMode=v;   SetupGodMode()   end })
-MovementTab:CreateToggle({ Name="Anti-Fling", CurrentValue=false, Callback=function(v) State.AntiFling=v;         SetupAntiFling() end })
+MovementTab:CreateToggle({ Name="Noclip",     CurrentValue=false, Callback=function(v) State.Movement.Noclip=v;  SetupNoclip()    end })
+MovementTab:CreateToggle({ Name="GodMode",    CurrentValue=false, Callback=function(v) State.Movement.GodMode=v; SetupGodMode()   end })
+MovementTab:CreateToggle({ Name="Anti-Fling", CurrentValue=false, Callback=function(v) State.AntiFling=v;        SetupAntiFling() end })
 MovementTab:CreateSection("TP Walk")
-MovementTab:CreateToggle({ Name="TP Walk",    CurrentValue=false, Callback=function(v) State.Movement.TPWalk=v; SetupTPWalk() end })
+MovementTab:CreateToggle({ Name="TP Walk",    CurrentValue=false, Callback=function(v) State.Movement.TPWalk=v;      SetupTPWalk() end })
 MovementTab:CreateToggle({ Name="Tween Mode", CurrentValue=false, Callback=function(v) State.Movement.TPWalkTween=v; if State.Movement.TPWalk then SetupTPWalk() end end })
 MovementTab:CreateSlider({ Name="TP Walk Speed", Range={1,300}, Increment=1, CurrentValue=50, Callback=function(v) State.Movement.TPWalkSpeed=v end })
 MovementTab:CreateSection("Click Teleport")
-MovementTab:CreateToggle({ Name="Click Tween TP",   CurrentValue=false, Callback=function(v) State.Movement.ClickTweenTP=v; if v then State.Movement.ClickTP=false end end })
-MovementTab:CreateSlider({ Name="Tween TP Speed",   Range={1,100}, Increment=1, CurrentValue=5, Callback=function(v) State.Movement.ClickTweenTPSpeed=v end })
+MovementTab:CreateToggle({ Name="Click Tween TP",    CurrentValue=false, Callback=function(v) State.Movement.ClickTweenTP=v; if v then State.Movement.ClickTP=false end end })
+MovementTab:CreateSlider({ Name="Tween TP Speed",    Range={1,100}, Increment=1, CurrentValue=5, Callback=function(v) State.Movement.ClickTweenTPSpeed=v end })
 MovementTab:CreateToggle({ Name="Click TP (Instant)", CurrentValue=false, Callback=function(v) State.Movement.ClickTP=v; if v then State.Movement.ClickTweenTP=false end end })
 MovementTab:CreateSection("Spin")
 MovementTab:CreateToggle({ Name="Spin",       CurrentValue=false, Callback=function(v) State.Movement.Spin=v; SetupSpin() end })
@@ -1415,11 +1416,11 @@ MovementTab:CreateDropdown({ Name="Hover Mode",
 FarmingTab:CreateSection("Coin Farming")
 FarmingTab:CreateToggle({ Name="Coin Farm", CurrentValue=false,
     Callback=function(v)
-        State.Farming.CoinFarmWanted=v
+        State.Farming.CoinFarmWanted = v
         if v then if not isInLobby() then startCoinFarmLoop() end else stopCoinFarm() end
     end })
-FarmingTab:CreateSlider({ Name="Farm Speed (st/s)",  Range={5,40},  Increment=5, CurrentValue=20, Callback=function(v) State.Farming.CoinFarmSpeed=v     end })
-FarmingTab:CreateSlider({ Name="Coin Delay (x0.1s)", Range={0,30},  Increment=1, CurrentValue=8,  Callback=function(v) State.Farming.CoinFarmDelay=v/10  end })
+FarmingTab:CreateSlider({ Name="Farm Speed (st/s)",  Range={5,40},  Increment=5, CurrentValue=20, Callback=function(v) State.Farming.CoinFarmSpeed=v    end })
+FarmingTab:CreateSlider({ Name="Coin Delay (x0.1s)", Range={0,30},  Increment=1, CurrentValue=8,  Callback=function(v) State.Farming.CoinFarmDelay=v/10 end })
 
 -- ============================================================
 -- // VISUALS TAB
