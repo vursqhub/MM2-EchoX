@@ -1,0 +1,1598 @@
+-- // MM2 | EchoX
+-- // Murder Mystery 2
+-- // Made by EchoX
+
+-- ============================================================
+-- // RE-INJECTION CLEANUP
+-- ============================================================
+do
+    if _G._PolarisAllDrawings then
+        for _, d in ipairs(_G._PolarisAllDrawings) do pcall(function() d:Remove() end) end
+        _G._PolarisAllDrawings = nil
+    end
+    if _G._MM2ESPCleanup then pcall(_G._MM2ESPCleanup); _G._MM2ESPCleanup = nil end
+end
+
+-- ============================================================
+-- // RAYFIELD — loads first so GUI appears immediately
+-- ============================================================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- ============================================================
+-- // NOTIFICATION SHIM  (replaces PolarisNotify)
+-- ============================================================
+local PolarisNotify = function(title, content, duration)
+    Rayfield:Notify({
+        Title    = tostring(title),
+        Content  = tostring(content),
+        Duration = duration or 4,
+        Image    = 4483362458,
+    })
+end
+
+-- ============================================================
+-- // SERVICES
+-- ============================================================
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+local HttpService      = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse       = LocalPlayer:GetMouse()
+
+-- ============================================================
+-- // HELPERS
+-- ============================================================
+local function GetCamera()    return workspace.CurrentCamera end
+local function GetCharacter(p) return p and p.Character end
+local function GetRoot(p)
+    local c = GetCharacter(p); return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function GetHumanoid(p)
+    local c = GetCharacter(p); return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function IsAlive(p)
+    local h = GetHumanoid(p); return h ~= nil and h.Health > 0
+end
+local function IsTeammate(player)
+    if not LocalPlayer.Team then return false end
+    return player.Team ~= nil and player.Team == LocalPlayer.Team
+end
+local function W2S(pos)
+    local v, on = GetCamera():WorldToViewportPoint(pos); return Vector2.new(v.X, v.Y), on
+end
+local function CopyToClipboard(text)
+    if setclipboard then setclipboard(text)
+    elseif Clipboard and Clipboard.set then Clipboard.set(text) end
+end
+
+-- ============================================================
+-- // DRAWING TRACKER
+-- ============================================================
+_G._PolarisAllDrawings = _G._PolarisAllDrawings or {}
+local function TrackDrawing(drawType)
+    local d = Drawing.new(drawType)
+    table.insert(_G._PolarisAllDrawings, d)
+    return d
+end
+
+local Defaults = { WalkSpeed = 16, JumpPower = 50 }
+local function RefreshDefaults()
+    local h = GetHumanoid(LocalPlayer)
+    if h then Defaults.WalkSpeed = h.WalkSpeed; Defaults.JumpPower = h.JumpPower end
+end
+RefreshDefaults()
+
+-- ============================================================
+-- // LIGHTING DEFAULTS
+-- ============================================================
+local LDefault = {
+    Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
+    Brightness = Lighting.Brightness, GlobalShadows = Lighting.GlobalShadows,
+    FogEnd = Lighting.FogEnd, FogStart = Lighting.FogStart,
+}
+local AtmoDefault = {}
+local PostFXSaved = {}
+
+local _ia = Lighting:FindFirstChildOfClass("Atmosphere")
+if _ia then
+    pcall(function() AtmoDefault.Density  = _ia.Density  end)
+    pcall(function() AtmoDefault.Haze     = _ia.Haze     end)
+    pcall(function() AtmoDefault.Glare    = _ia.Glare    end)
+    pcall(function() AtmoDefault.FogBlend = _ia.FogBlend end)
+end
+for _, fx in ipairs(Lighting:GetChildren()) do
+    if fx:IsA("PostEffect") then PostFXSaved[fx] = fx.Enabled end
+end
+
+-- ============================================================
+-- // STATE
+-- ============================================================
+local State = {
+    Aimbot = {
+        Enabled = false, KeepLocked = false, Smoothness = 0.5, FOV = 150,
+        Color = Color3.fromRGB(255, 0, 0), LockKey = "MouseButton2",
+        WallCheck = false, Prediction = false, PredictionStrength = 0.065,
+        TeamCheck = false, RainbowFOV = false, RainbowSpeed = 0.4, TargetPart = "Head",
+    },
+    ESP = {
+        Enabled = false, Box = false, Skeleton = false, Names = false, Distance = false,
+        Highlight = false, Tracer = false, Color = Color3.fromRGB(255, 255, 255),
+        Rainbow = false, RainbowSpeed = 0.4, TeamCheck = false, TeamMode = "hide",
+        TeamColor = Color3.fromRGB(0, 255, 120), MaxDist = 500,
+    },
+    RoleESP = {
+        InnocentEnabled = false, SheriffEnabled = false, MurdererEnabled = false,
+        GunDropEnabled  = false,
+        InnocentColor   = Color3.fromRGB(0, 255, 0),
+        SheriffColor    = Color3.fromRGB(0, 100, 255),
+        MurdererColor   = Color3.fromRGB(255, 0, 0),
+        GunDropColor    = Color3.fromRGB(255, 255, 0),
+    },
+    Movement = {
+        TPWalk = false, TPWalkTween = false, TPWalkSpeed = 50,
+        WalkSpeed = false, WalkSpeedValue = 16,
+        JumpPower = false, JumpPowerValue = 50,
+        Fly = false, FlySpeed = 50,
+        Spin = false, SpinSpeed = 20,
+        ClickTweenTP = false, ClickTweenTPSpeed = 5, ClickTP = false,
+        InfJump = false, Noclip = false, GodMode = false,
+        Orbit = false, OrbitSpeed = 20, OrbitRadius = 5, OrbitMode = "click", OrbitCooldown = 1,
+        HoverPlayer = false, HoverHeight = 8, HoverSpeed = 20, HoverMode = "click",
+    },
+    Farming = {
+        CoinFarm = false, CoinFarmSpeed = 20, CoinFarmDelay = 0.8, CoinFarmWanted = false,
+    },
+    CameraFOV  = 70,
+    Fullbright = false, NoFog = false, NoShadows = false, FPSBoost = false, AntiFling = false,
+    Triggerbot = {
+        Enabled = false, Spam = false, WallCheck = false, TeamCheck = false,
+        Radius = 15, Delay = 0.08,
+    },
+}
+
+-- ============================================================
+-- // CONNECTION MANAGER
+-- ============================================================
+local Connections = {}
+local function Conn(name, c)
+    if Connections[name] then Connections[name]:Disconnect() end; Connections[name] = c
+end
+local function Drop(name)
+    if Connections[name] then Connections[name]:Disconnect(); Connections[name] = nil end
+end
+
+-- ============================================================
+-- // MISC STORAGE
+-- ============================================================
+local ESPObjects    = {}
+local TweenTPActive = false
+local LockedTarget  = nil
+local NoclipParts   = {}
+local _vpCenter     = Vector2.new(800, 450)
+local OrbitTarget   = nil; local OrbitAngle = 0; local OrbitAutoTimer = 0
+local FPSParticleCache = {}
+local _rainbowHueAimbot = 0; local _rainbowHueESP = 0
+local _tbWasInView = false; local _tbSpamTimer = 0
+local _lastTargetName = ""; local _lastTargetHP = nil; local _totalDamage = 0
+local HoverTarget   = nil
+local SpinBAV       = nil
+local cfgNameValue  = ""  -- used by configs tab
+
+-- ============================================================
+-- // MM2 ROLE ESP
+-- ============================================================
+local _roleESPTimer = 0
+
+local function ClearAllMM2Highlights()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr.Character then
+            for _, hname in ipairs({"InnocentHighlight","SheriffHighlight","MurdererHighlight"}) do
+                local h = plr.Character:FindFirstChild(hname); if h then h:Destroy() end
+            end
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "GunDrop" then
+            local h = obj:FindFirstChild("GunDropHighlight"); if h then h:Destroy() end
+        end
+    end
+end
+_G._MM2ESPCleanup = ClearAllMM2Highlights
+
+local function HasTool(player, toolName)
+    if not player or not player.Character then return false end
+    return player.Backpack:FindFirstChild(toolName) ~= nil
+        or player.Character:FindFirstChild(toolName) ~= nil
+end
+
+local function UpdateMM2RoleESP()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr == LocalPlayer or not plr.Character then continue end
+        local char     = plr.Character
+        local hasKnife = HasTool(plr, "Knife")
+        local hasGun   = HasTool(plr, "Gun")
+        local isInno   = not hasKnife and not hasGun
+
+        local innocHL = char:FindFirstChild("InnocentHighlight")
+        if State.RoleESP.InnocentEnabled and isInno then
+            if not innocHL then
+                innocHL = Instance.new("Highlight"); innocHL.Name = "InnocentHighlight"
+                innocHL.FillColor = State.RoleESP.InnocentColor; innocHL.OutlineColor = State.RoleESP.InnocentColor
+                innocHL.FillTransparency = 0.5; innocHL.OutlineTransparency = 0; innocHL.Parent = char
+            end
+        else if innocHL then innocHL:Destroy() end end
+
+        local sheriffHL = char:FindFirstChild("SheriffHighlight")
+        if State.RoleESP.SheriffEnabled and hasGun then
+            if not sheriffHL then
+                sheriffHL = Instance.new("Highlight"); sheriffHL.Name = "SheriffHighlight"
+                sheriffHL.FillColor = State.RoleESP.SheriffColor; sheriffHL.OutlineColor = State.RoleESP.SheriffColor
+                sheriffHL.FillTransparency = 0.5; sheriffHL.OutlineTransparency = 0; sheriffHL.Parent = char
+            end
+        else if sheriffHL then sheriffHL:Destroy() end end
+
+        local murdHL = char:FindFirstChild("MurdererHighlight")
+        if State.RoleESP.MurdererEnabled and hasKnife then
+            if not murdHL then
+                murdHL = Instance.new("Highlight"); murdHL.Name = "MurdererHighlight"
+                murdHL.FillColor = State.RoleESP.MurdererColor; murdHL.OutlineColor = State.RoleESP.MurdererColor
+                murdHL.FillTransparency = 0.5; murdHL.OutlineTransparency = 0; murdHL.Parent = char
+            end
+        else if murdHL then murdHL:Destroy() end end
+    end
+
+    if State.RoleESP.GunDropEnabled then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "GunDrop" and obj:IsA("BasePart") and not obj:FindFirstChild("GunDropHighlight") then
+                local h = Instance.new("Highlight"); h.Name = "GunDropHighlight"
+                h.FillColor = State.RoleESP.GunDropColor; h.OutlineColor = State.RoleESP.GunDropColor
+                h.FillTransparency = 0.3; h.OutlineTransparency = 0; h.Parent = obj
+            end
+        end
+    else
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "GunDrop" then
+                local h = obj:FindFirstChild("GunDropHighlight"); if h then h:Destroy() end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- // AIMBOT ENGINE
+-- ============================================================
+local function RaycastVisible(targetPart)
+    local char = GetCharacter(LocalPlayer); local head = char and char:FindFirstChild("Head")
+    if not head then return false end
+    local origin = head.Position; local targetPos = targetPart.Position
+    local direction = targetPos - origin; local distance = direction.Magnitude
+    if distance < 0.1 then return true end
+    local dirUnit = direction.Unit; local excluded = {char}; local traveled = 0
+    for _ = 1, 20 do
+        local rp = RaycastParams.new(); rp.FilterDescendantsInstances = excluded
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        local res = workspace:Raycast(origin + dirUnit * traveled, dirUnit * (distance - traveled), rp)
+        if not res then return true end
+        local hit = res.Instance
+        if not hit.CanCollide then
+            table.insert(excluded, hit); traveled = (res.Position - origin).Magnitude + 0.05
+            if traveled >= distance then return true end
+        elseif hit:IsDescendantOf(targetPart.Parent) then return true
+        else return false end
+    end
+    return false
+end
+
+local function IsTargetVisible(tp) return not State.Aimbot.WallCheck or RaycastVisible(tp) end
+
+local function GetPredPos(part, rootPart)
+    local vel = (State.Aimbot.Prediction and rootPart) and rootPart.AssemblyLinearVelocity or Vector3.zero
+    local lead = State.Aimbot.Prediction and State.Aimbot.PredictionStrength or 0
+    return part.Position + vel * lead
+end
+
+local function GetAimPart(char)
+    if not char then return nil end
+    local partName = State.Aimbot.TargetPart or "Head"
+    local p = char:FindFirstChild(partName)
+    if p and p:IsA("BasePart") then return p end
+    if partName == "Torso" then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    elseif partName == "Head" then return char:FindFirstChild("Head") end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetTargetSP(player, keepLocked)
+    if not player or not IsAlive(player) then return nil end
+    if State.Aimbot.TeamCheck and IsTeammate(player) then return nil end
+    local char = GetCharacter(player); local aimPart = GetAimPart(char)
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not aimPart then return nil end
+    local pred = GetPredPos(aimPart, root); local sp, on = W2S(pred)
+    if not on then return nil end
+    if not keepLocked then
+        local mousePos = UserInputService:GetMouseLocation()
+        if (sp - mousePos).Magnitude > State.Aimbot.FOV then return nil end
+    end
+    if not IsTargetVisible(aimPart) then return nil end
+    return sp
+end
+
+local function AimScanTarget()
+    local mousePos = UserInputService:GetMouseLocation(); local best, bestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and IsAlive(p) and not (State.Aimbot.TeamCheck and IsTeammate(p)) then
+            local char = GetCharacter(p); local aimPart = GetAimPart(char)
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if aimPart then
+                local pred = GetPredPos(aimPart, root); local sp, on = W2S(pred)
+                if on then
+                    local d = (sp - mousePos).Magnitude
+                    if d < State.Aimbot.FOV and d < bestDist and IsTargetVisible(aimPart) then
+                        bestDist = d; best = p
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function IsAimKeyActive()
+    local k = State.Aimbot.LockKey
+    if k == "MouseButton2" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    elseif k == "MouseButton1" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    elseif k == "MouseButton3" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+    else local ok, kc = pcall(function() return Enum.KeyCode[k] end)
+        if ok and kc then return UserInputService:IsKeyDown(kc) end end
+    return false
+end
+
+local function RunAimbot()
+    if not State.Aimbot.Enabled then return end
+    local keyHeld = IsAimKeyActive()
+    if not keyHeld then LockedTarget = nil; _lastTargetName = ""; _lastTargetHP = nil; _totalDamage = 0; return end
+    local sp = GetTargetSP(LockedTarget, State.Aimbot.KeepLocked)
+    if not sp then
+        LockedTarget = AimScanTarget()
+        if LockedTarget then
+            sp = GetTargetSP(LockedTarget, false)
+            if LockedTarget then
+                local name = LockedTarget.DisplayName or LockedTarget.Name
+                if name ~= _lastTargetName then
+                    _lastTargetName = name; _lastTargetHP = nil; _totalDamage = 0
+                    PolarisNotify("Aimbot", "Tracking: " .. name, 2)
+                end
+            end
+        end
+    end
+    if not LockedTarget or not sp then return end
+    local hum = GetHumanoid(LockedTarget)
+    if hum then
+        local curHP = hum.Health
+        if _lastTargetHP ~= nil and curHP < _lastTargetHP then
+            local dmg = _lastTargetHP - curHP; _totalDamage = _totalDamage + dmg
+            PolarisNotify("Hit", string.format("%s  −%.0f hp  (total %.0f)", _lastTargetName, dmg, _totalDamage), 1.5)
+        end
+        _lastTargetHP = curHP
+    end
+    local char = GetCharacter(LockedTarget); local aimPart = GetAimPart(char)
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not aimPart then LockedTarget = nil; return end
+    local aimPos = GetPredPos(aimPart, root)
+    local smooth = math.clamp(State.Aimbot.Smoothness, 0.01, 1)
+    local camCF = GetCamera().CFrame; local dir = (aimPos - camCF.Position).Unit
+    GetCamera().CFrame = camCF:Lerp(CFrame.new(camCF.Position, camCF.Position + dir), smooth)
+end
+
+-- ============================================================
+-- // STANDARD ESP
+-- ============================================================
+local function GetSkelPairs(char)
+    if char:FindFirstChild("UpperTorso") then
+        return {{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+            {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+            {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"},  {"LeftLowerArm","LeftHand"},
+            {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+            {"LowerTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"},  {"LeftLowerLeg","LeftFoot"}}
+    else
+        return {{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
+    end
+end
+
+local function RebuildSkeleton(d, char)
+    for _, s in ipairs(d.Skeleton) do pcall(function() s.line:Remove() end) end
+    d.Skeleton = {}; d.lastChar = char
+    for _, pair in ipairs(GetSkelPairs(char)) do
+        local ln = TrackDrawing("Line"); ln.Visible = false; ln.Color = State.ESP.Color; ln.Thickness = 1
+        table.insert(d.Skeleton, {line=ln, parts=pair})
+    end
+end
+
+local function ClearESPEntry(d)
+    pcall(function() d.Box.Visible = false end); pcall(function() d.Name.Visible = false end)
+    pcall(function() d.Distance.Visible = false end); pcall(function() d.Tracer.Visible = false end)
+    pcall(function() d.TeamLabel.Visible = false end)
+    pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
+    for _, s in ipairs(d.Skeleton) do pcall(function() s.line.Visible = false end) end
+end
+
+local function DestroyESPEntry(d)
+    ClearESPEntry(d)
+    pcall(function() d.Box:Remove() end); pcall(function() d.Name:Remove() end)
+    pcall(function() d.Distance:Remove() end); pcall(function() d.Tracer:Remove() end)
+    pcall(function() d.TeamLabel:Remove() end); pcall(function() d.Highlight:Destroy() end)
+    for _, s in ipairs(d.Skeleton) do pcall(function() s.line:Remove() end) end
+end
+
+local function ClearAllESP()
+    for _, d in pairs(ESPObjects) do DestroyESPEntry(d) end; ESPObjects = {}
+end
+
+local function CreateESPForPlayer(player)
+    if player == LocalPlayer or ESPObjects[player] then return end
+    local col = State.ESP.Color; local d = {}
+    d.Box = TrackDrawing("Square"); d.Box.Visible=false; d.Box.Color=col; d.Box.Thickness=1; d.Box.Filled=false
+    d.Name = TrackDrawing("Text"); d.Name.Visible=false; d.Name.Color=col; d.Name.Size=14; d.Name.Center=true; d.Name.Outline=true
+    d.Distance = TrackDrawing("Text"); d.Distance.Visible=false; d.Distance.Color=col; d.Distance.Size=12; d.Distance.Center=true; d.Distance.Outline=true
+    d.Tracer = TrackDrawing("Line"); d.Tracer.Visible=false; d.Tracer.Color=col; d.Tracer.Thickness=1
+    d.Highlight = Instance.new("Highlight")
+    d.Highlight.FillTransparency=0.5; d.Highlight.OutlineTransparency=0; d.Highlight.FillColor=col; d.Highlight.OutlineColor=col
+    d.TeamLabel = TrackDrawing("Text"); d.TeamLabel.Visible=false; d.TeamLabel.Color=State.ESP.TeamColor
+    d.TeamLabel.Size=13; d.TeamLabel.Center=true; d.TeamLabel.Outline=true; d.TeamLabel.Text="TEAM"
+    d.Skeleton={}; d.lastChar=nil; d.lastColor=col
+    ESPObjects[player] = d
+end
+
+local function SetupESP()
+    ClearAllESP(); if not State.ESP.Enabled then return end
+    for _, p in ipairs(Players:GetPlayers()) do CreateESPForPlayer(p) end
+end
+
+local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
+    pcall(function() d.Box.Visible=false end); pcall(function() d.Name.Visible=false end)
+    pcall(function() d.Distance.Visible=false end); pcall(function() d.Tracer.Visible=false end)
+    pcall(function() d.TeamLabel.Visible=false end)
+    for _, s in ipairs(d.Skeleton) do pcall(function() s.line.Visible=false end) end
+    local char = GetCharacter(player); local root, hum, head
+    if char then root=char:FindFirstChild("HumanoidRootPart"); hum=char:FindFirstChildOfClass("Humanoid"); head=char:FindFirstChild("Head") end
+    local alive = char~=nil and root~=nil and hum~=nil and hum.Health>0
+    local isTeam = State.ESP.TeamCheck and IsTeammate(player)
+    if isTeam and State.ESP.TeamMode=="hide" then
+        pcall(function() if d.Highlight.Parent~=nil then d.Highlight.Parent=nil end end); return
+    end
+    if not alive then pcall(function() if d.Highlight.Parent~=nil then d.Highlight.Parent=nil end end); return end
+    if char ~= d.lastChar then RebuildSkeleton(d, char) end
+    local col = isTeam and State.ESP.TeamColor or (State.ESP.Rainbow and rainbowCol or State.ESP.Color)
+    if col ~= d.lastColor or State.ESP.Rainbow then
+        d.lastColor = col
+        pcall(function()
+            d.Box.Color=col; d.Name.Color=col; d.Distance.Color=col; d.Tracer.Color=col
+            d.Highlight.FillColor=col; d.Highlight.OutlineColor=col
+            for _, s in ipairs(d.Skeleton) do s.line.Color=col end
+        end)
+    end
+    local rootPos = root.Position
+    local headPos = head and head.Position or (rootPos+Vector3.new(0,2.5,0))
+    local feetPos = rootPos - Vector3.new(0,3,0)
+    local headTopPos = headPos + Vector3.new(0,0.6,0)
+    local rootSP, rootOn = W2S(rootPos)
+    local headSP, headOn = W2S(headPos)
+    local feetSP, _      = W2S(feetPos)
+    local headTopSP, _   = W2S(headTopPos)
+    if not rootOn then pcall(function() if d.Highlight.Parent~=nil then d.Highlight.Parent=nil end end); return end
+    if State.ESP.MaxDist>0 and selfRoot then
+        if (selfRoot.Position-rootPos).Magnitude>State.ESP.MaxDist then
+            pcall(function() if d.Highlight.Parent~=nil then d.Highlight.Parent=nil end end); return
+        end
+    end
+    pcall(function()
+        if State.ESP.Highlight and not isTeam then
+            if d.Highlight.Parent~=char then d.Highlight.Parent=char end
+        else if d.Highlight.Parent~=nil then d.Highlight.Parent=nil end end
+    end)
+    if isTeam and State.ESP.TeamMode=="color" then
+        pcall(function()
+            d.TeamLabel.Color=State.ESP.TeamColor
+            d.TeamLabel.Position=Vector2.new(rootSP.X,(headOn and headSP.Y or rootSP.Y-30)-32)
+            d.TeamLabel.Visible=true
+        end)
+    end
+    if State.ESP.Box then
+        pcall(function()
+            local topY=math.min(headTopSP.Y,feetSP.Y); local botY=math.max(headTopSP.Y,feetSP.Y)
+            local sy=math.max(botY-topY,4); local sx=math.max(sy*0.45,4)
+            d.Box.Size=Vector2.new(sx,sy); d.Box.Position=Vector2.new(rootSP.X-sx*0.5,topY); d.Box.Visible=true
+        end)
+    end
+    if State.ESP.Names then
+        pcall(function()
+            d.Name.Text=player.DisplayName
+            d.Name.Position=Vector2.new(rootSP.X,(headOn and headSP.Y or rootSP.Y-30)-18); d.Name.Visible=true
+        end)
+    end
+    if State.ESP.Distance then
+        pcall(function()
+            local dist=selfRoot and math.floor((selfRoot.Position-rootPos).Magnitude) or 0
+            d.Distance.Text=tostring(dist).." st"
+            d.Distance.Position=Vector2.new(rootSP.X,math.max(feetSP.Y,rootSP.Y)+4); d.Distance.Visible=true
+        end)
+    end
+    if State.ESP.Tracer then
+        pcall(function()
+            d.Tracer.From=Vector2.new(_vpCenter.X,_vpCenter.Y*2); d.Tracer.To=feetSP; d.Tracer.Visible=true
+        end)
+    end
+    if State.ESP.Skeleton then
+        for _, s in ipairs(d.Skeleton) do
+            pcall(function()
+                local p1=char:FindFirstChild(s.parts[1]); local p2=char:FindFirstChild(s.parts[2])
+                if p1 and p2 then
+                    local s1,on1=W2S(p1.Position); local s2,on2=W2S(p2.Position)
+                    if on1 and on2 then s.line.From=s1; s.line.To=s2; s.line.Visible=true end
+                end
+            end)
+        end
+    end
+end
+
+local function UpdateESP(rainbowCol)
+    local selfRoot = GetRoot(LocalPlayer)
+    if not State.ESP.Enabled then for _, d in pairs(ESPObjects) do ClearESPEntry(d) end; return end
+    for player, d in pairs(ESPObjects) do pcall(UpdateESPPlayer, player, d, selfRoot, rainbowCol) end
+end
+
+-- ============================================================
+-- // VISUALS
+-- ============================================================
+local function SetAtmo(a, vals)
+    if not a then return end
+    if vals.Density  ~= nil then pcall(function() a.Density  = vals.Density  end) end
+    if vals.Haze     ~= nil then pcall(function() a.Haze     = vals.Haze     end) end
+    if vals.Glare    ~= nil then pcall(function() a.Glare    = vals.Glare    end) end
+    if vals.FogBlend ~= nil then pcall(function() a.FogBlend = vals.FogBlend end) end
+end
+
+local function SetupFullbright()
+    if State.Fullbright then
+        Lighting.Ambient=Color3.fromRGB(255,255,255); Lighting.OutdoorAmbient=Color3.fromRGB(255,255,255)
+        Lighting.Brightness=2; Lighting.GlobalShadows=false
+        SetAtmo(Lighting:FindFirstChildOfClass("Atmosphere"),{Density=0,Haze=0,Glare=0,FogBlend=0})
+        for _, fx in ipairs(Lighting:GetChildren()) do if fx:IsA("PostEffect") then fx.Enabled=false end end
+    else
+        Lighting.Ambient=LDefault.Ambient; Lighting.OutdoorAmbient=LDefault.OutdoorAmbient
+        Lighting.Brightness=LDefault.Brightness
+        if not State.NoShadows then Lighting.GlobalShadows=LDefault.GlobalShadows end
+        local a=Lighting:FindFirstChildOfClass("Atmosphere")
+        if a and next(AtmoDefault) then SetAtmo(a,AtmoDefault) end
+        for fx, was in pairs(PostFXSaved) do pcall(function() fx.Enabled=was end) end
+        if State.NoFog then SetAtmo(Lighting:FindFirstChildOfClass("Atmosphere"),{Density=0,Haze=0,FogBlend=0}) end
+    end
+end
+
+local function SetupNoFog()
+    if State.NoFog then
+        Lighting.FogEnd=1e9; Lighting.FogStart=1e9
+        SetAtmo(Lighting:FindFirstChildOfClass("Atmosphere"),{Density=0,Haze=0,FogBlend=0})
+    else
+        Lighting.FogEnd=LDefault.FogEnd; Lighting.FogStart=LDefault.FogStart
+        if not State.Fullbright then
+            local a=Lighting:FindFirstChildOfClass("Atmosphere")
+            if a and next(AtmoDefault) then SetAtmo(a,AtmoDefault) end
+        end
+    end
+end
+
+local function SetupNoShadows()
+    Lighting.GlobalShadows = not State.NoShadows and LDefault.GlobalShadows or false
+end
+
+local function SetupFPSBoost()
+    Drop("FPSParticle")
+    if State.FPSBoost then
+        Lighting.GlobalShadows=false
+        pcall(function() settings().Rendering.QualityLevel=Enum.QualityLevel.Level01 end)
+        FPSParticleCache={}
+        for _, fx in ipairs(Lighting:GetDescendants()) do
+            if fx:IsA("PostEffect") then FPSParticleCache[fx]=fx.Enabled; pcall(function() fx.Enabled=false end) end
+        end
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") or v:IsA("Trail") then
+                FPSParticleCache[v]=v.Enabled; pcall(function() v.Enabled=false end)
+            end
+            if v:IsA("SurfaceAppearance") then FPSParticleCache[v]=v.Parent; pcall(function() v.Parent=nil end) end
+        end
+        local atmo=Lighting:FindFirstChildOfClass("Atmosphere")
+        if atmo then FPSParticleCache[atmo]=atmo.Parent; pcall(function() atmo.Parent=nil end) end
+        local sky=Lighting:FindFirstChildOfClass("Sky")
+        if sky then FPSParticleCache[sky]=sky.Parent; pcall(function() sky.Parent=nil end) end
+        Conn("FPSParticle", workspace.DescendantAdded:Connect(function(v)
+            if not State.FPSBoost then return end
+            if v:IsA("ParticleEmitter") or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") or v:IsA("Trail") then
+                task.defer(function() if State.FPSBoost and v and v.Parent then FPSParticleCache[v]=v.Enabled; pcall(function() v.Enabled=false end) end end)
+            end
+            if v:IsA("SurfaceAppearance") then
+                task.defer(function() if State.FPSBoost and v and v.Parent then FPSParticleCache[v]=v.Parent; pcall(function() v.Parent=nil end) end end)
+            end
+        end))
+    else
+        pcall(function() settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic end)
+        if not State.NoShadows then Lighting.GlobalShadows=LDefault.GlobalShadows end
+        for v, was in pairs(FPSParticleCache) do
+            pcall(function()
+                if not v then return end
+                if typeof(was)=="Instance" then if v and not v.Parent then v.Parent=was end
+                elseif v.Parent then v.Enabled=was end
+            end)
+        end
+        FPSParticleCache={}
+    end
+end
+
+-- ============================================================
+-- // MOVEMENT
+-- ============================================================
+local function SetupTPWalk()
+    Drop("TPWalk"); if not State.Movement.TPWalk then return end
+    if State.Movement.TPWalkTween then
+        Conn("TPWalk", RunService.Heartbeat:Connect(function(dt)
+            local root=GetRoot(LocalPlayer); local hum=GetHumanoid(LocalPlayer)
+            if not root or not hum then return end
+            local md=hum.MoveDirection; if md.Magnitude<0.1 then return end
+            local flat=Vector3.new(md.X,0,md.Z); if flat.Magnitude<0.01 then flat=md end
+            local tp=TweenService:Create(root,TweenInfo.new(dt,Enum.EasingStyle.Linear),
+                {CFrame=CFrame.new(root.Position+md*State.Movement.TPWalkSpeed*dt,root.Position+md*State.Movement.TPWalkSpeed*dt+flat.Unit)})
+            tp:Play()
+        end))
+    else
+        Conn("TPWalk", RunService.Heartbeat:Connect(function()
+            local root=GetRoot(LocalPlayer); local hum=GetHumanoid(LocalPlayer)
+            if not root or not hum then return end
+            local md=hum.MoveDirection; if md.Magnitude<0.1 then return end
+            local flat=Vector3.new(md.X,0,md.Z); if flat.Magnitude<0.01 then flat=md end
+            local tp=root.Position+md*State.Movement.TPWalkSpeed*0.05
+            root.CFrame=CFrame.new(tp,tp+flat.Unit)
+        end))
+    end
+end
+
+local function ApplyWalkSpeed()
+    local h=GetHumanoid(LocalPlayer); if not h then return end
+    h.WalkSpeed=State.Movement.WalkSpeed and State.Movement.WalkSpeedValue or Defaults.WalkSpeed
+end
+
+local function SetupFly()
+    Drop("Fly")
+    local char=GetCharacter(LocalPlayer); local root=GetRoot(LocalPlayer); local hum=GetHumanoid(LocalPlayer)
+    if not char or not root or not hum then return end
+    local bv=root:FindFirstChild("FlyBV"); if bv then bv:Destroy() end
+    local bg=root:FindFirstChild("FlyBG"); if bg then bg:Destroy() end
+    if not State.Movement.Fly then hum.PlatformStand=false; return end
+    hum.PlatformStand=true
+    local bv2=Instance.new("BodyVelocity"); bv2.Name="FlyBV"; bv2.Velocity=Vector3.zero; bv2.MaxForce=Vector3.new(1e9,1e9,1e9); bv2.Parent=root
+    local bg2=Instance.new("BodyGyro"); bg2.Name="FlyBG"; bg2.MaxTorque=Vector3.new(1e9,1e9,1e9); bg2.P=1e4; bg2.CFrame=GetCamera().CFrame; bg2.Parent=root
+    Conn("Fly", RunService.Heartbeat:Connect(function()
+        local r=GetRoot(LocalPlayer); if not r then return end
+        local v=r:FindFirstChild("FlyBV"); local g=r:FindFirstChild("FlyBG"); if not v or not g then return end
+        local cam=GetCamera(); local d=Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W)           then d=d+cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S)           then d=d-cam.CFrame.LookVector  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A)           then d=d-cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D)           then d=d+cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)       then d=d+Vector3.new(0,1,0)    end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then d=d-Vector3.new(0,1,0)    end
+        v.Velocity=d.Magnitude>0 and (d.Unit*State.Movement.FlySpeed) or Vector3.zero; g.CFrame=cam.CFrame
+    end))
+end
+
+local function SetupSpin()
+    Drop("Spin"); if SpinBAV then pcall(function() SpinBAV:Destroy() end); SpinBAV=nil end
+    if not State.Movement.Spin then return end
+    local root=GetRoot(LocalPlayer)
+    if not root then
+        Conn("Spin", RunService.Heartbeat:Connect(function()
+            local r=GetRoot(LocalPlayer); if not r then return end
+            Drop("Spin"); if SpinBAV then pcall(function() SpinBAV:Destroy() end); SpinBAV=nil end
+            local bav=Instance.new("BodyAngularVelocity")
+            bav.AngularVelocity=Vector3.new(0,math.rad(State.Movement.SpinSpeed)*60,0)
+            bav.MaxTorque=Vector3.new(0,math.huge,0); bav.P=math.huge; bav.Parent=r; SpinBAV=bav
+            Conn("Spin", RunService.Heartbeat:Connect(function()
+                if not State.Movement.Spin then return end
+                if SpinBAV and SpinBAV.Parent then SpinBAV.AngularVelocity=Vector3.new(0,math.rad(State.Movement.SpinSpeed)*60,0) end
+            end))
+        end)); return
+    end
+    local bav=Instance.new("BodyAngularVelocity")
+    bav.AngularVelocity=Vector3.new(0,math.rad(State.Movement.SpinSpeed)*60,0)
+    bav.MaxTorque=Vector3.new(0,math.huge,0); bav.P=math.huge; bav.Parent=root; SpinBAV=bav
+    Conn("Spin", RunService.Heartbeat:Connect(function()
+        if not State.Movement.Spin then return end
+        if SpinBAV and SpinBAV.Parent then SpinBAV.AngularVelocity=Vector3.new(0,math.rad(State.Movement.SpinSpeed)*60,0) end
+    end))
+end
+
+local function SetupInfJump()
+    Drop("InfJump"); if not State.Movement.InfJump then return end
+    Conn("InfJump", UserInputService.JumpRequest:Connect(function()
+        local h=GetHumanoid(LocalPlayer); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end))
+end
+
+local function SetupNoclip()
+    Drop("Noclip")
+    if not State.Movement.Noclip then
+        for part in pairs(NoclipParts) do pcall(function() if part and part.Parent then part.CanCollide=true end end) end
+        NoclipParts={}; return
+    end
+    Conn("Noclip", RunService.Stepped:Connect(function()
+        local char=GetCharacter(LocalPlayer); if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then NoclipParts[p]=true; p.CanCollide=false end
+        end
+    end))
+end
+
+local function SetupGodMode()
+    Drop("GodMode"); Drop("GodModeMax"); Drop("GodModeHB")
+    if not State.Movement.GodMode then return end
+    local h=GetHumanoid(LocalPlayer); if not h then return end
+    pcall(function() h.MaxHealth=math.huge end); pcall(function() h.Health=math.huge end)
+    pcall(function() h.BreakJointsOnDeath=false end)
+    Conn("GodMode", h.HealthChanged:Connect(function() if State.Movement.GodMode then pcall(function() h.Health=h.MaxHealth end) end end))
+    Conn("GodModeMax", h:GetPropertyChangedSignal("MaxHealth"):Connect(function() if State.Movement.GodMode then pcall(function() h.MaxHealth=math.huge; h.Health=math.huge end) end end))
+    Conn("GodModeHB", RunService.Heartbeat:Connect(function()
+        if not State.Movement.GodMode then return end
+        local hum=GetHumanoid(LocalPlayer); if hum and hum.Health<hum.MaxHealth then pcall(function() hum.Health=hum.MaxHealth end) end
+    end))
+end
+
+local function GetNearestPlayerRoot()
+    local sr=GetRoot(LocalPlayer); if not sr then return nil end
+    local best,bestD=nil,math.huge
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LocalPlayer then local r=GetRoot(p); if r then local d=(r.Position-sr.Position).Magnitude; if d<bestD then bestD=d; best=r end end end
+    end; return best
+end
+
+local function GetRandomPlayerRoot()
+    local roots={}
+    for _,p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then local r=GetRoot(p); if r then table.insert(roots,r) end end end
+    if #roots==0 then return nil end; return roots[math.random(1,#roots)]
+end
+
+local function SetupOrbit()
+    Drop("Orbit"); Drop("OrbitClick"); OrbitTarget=nil; OrbitAngle=0; OrbitAutoTimer=0
+    if not State.Movement.Orbit then return end
+    if State.Movement.OrbitMode=="click" then
+        Conn("OrbitClick", Mouse.Button1Down:Connect(function()
+            if not State.Movement.Orbit then return end
+            if State.Movement.ClickTP or State.Movement.ClickTweenTP then return end
+            local hit=Mouse.Hit; if not hit then return end
+            local best,bestD=nil,math.huge
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p~=LocalPlayer then local r=GetRoot(p); if r then local d=(r.Position-hit.Position).Magnitude; if d<8 and d<bestD then bestD=d; best=r end end end
+            end
+            if best then OrbitTarget=best; OrbitAngle=0 end
+        end))
+    end
+    Conn("Orbit", RunService.Heartbeat:Connect(function(dt)
+        local root=GetRoot(LocalPlayer); if not root then return end
+        local mode=State.Movement.OrbitMode
+        if mode=="nearest" then OrbitTarget=GetNearestPlayerRoot()
+        elseif mode=="auto" then
+            OrbitAutoTimer=OrbitAutoTimer+dt
+            if OrbitAutoTimer>=State.Movement.OrbitCooldown or not (OrbitTarget and OrbitTarget.Parent) then
+                OrbitAutoTimer=0; OrbitTarget=GetRandomPlayerRoot()
+            end
+        end
+        if not OrbitTarget or not OrbitTarget.Parent then OrbitTarget=nil; return end
+        OrbitAngle=OrbitAngle+math.rad(State.Movement.OrbitSpeed)*dt*60
+        local op=OrbitTarget.Position+Vector3.new(math.cos(OrbitAngle)*State.Movement.OrbitRadius,0,math.sin(OrbitAngle)*State.Movement.OrbitRadius)
+        root.CFrame=CFrame.new(op,OrbitTarget.Position)
+    end))
+end
+
+local function SetupHoverPlayer()
+    Drop("HoverPlayer"); Drop("HoverClick"); HoverTarget=nil
+    if not State.Movement.HoverPlayer then return end
+    if State.Movement.HoverMode=="click" then
+        Conn("HoverClick", Mouse.Button1Down:Connect(function()
+            if not State.Movement.HoverPlayer then return end
+            if State.Movement.ClickTP or State.Movement.ClickTweenTP then return end
+            local hit=Mouse.Hit; if not hit then return end
+            local best,bestD=nil,math.huge
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p~=LocalPlayer and IsAlive(p) then local r=GetRoot(p); if r then local d=(r.Position-hit.Position).Magnitude; if d<12 and d<bestD then bestD=d; best=p end end end
+            end
+            if best then HoverTarget=best; PolarisNotify("Hover","Hovering: "..(best.DisplayName or best.Name),2) end
+        end))
+    end
+    Conn("HoverPlayer", RunService.Heartbeat:Connect(function(dt)
+        if not State.Movement.HoverPlayer then return end
+        local root=GetRoot(LocalPlayer); if not root then return end
+        if State.Movement.HoverMode=="nearest" then
+            local best,bestD=nil,math.huge
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p~=LocalPlayer and IsAlive(p) then local r=GetRoot(p); if r then local d=(r.Position-root.Position).Magnitude; if d<bestD then bestD=d; best=p end end end
+            end
+            HoverTarget=best
+        end
+        if not HoverTarget or not IsAlive(HoverTarget) then HoverTarget=nil; return end
+        local tr=GetRoot(HoverTarget); if not tr then return end
+        local targetPos=tr.Position+Vector3.new(0,State.Movement.HoverHeight,0)
+        local look=tr.CFrame.LookVector; local flatLook=Vector3.new(look.X,0,look.Z)
+        if flatLook.Magnitude<0.01 then flatLook=Vector3.new(0,0,1) end
+        root.CFrame=root.CFrame:Lerp(CFrame.new(targetPos,targetPos+flatLook),math.clamp(State.Movement.HoverSpeed*dt,0,1))
+    end))
+end
+
+local function SetupAntiFling()
+    Drop("AntiFling"); if not State.AntiFling then return end
+    Conn("AntiFling", RunService.Heartbeat:Connect(function()
+        local r=GetRoot(LocalPlayer); if r and r.AssemblyLinearVelocity.Magnitude>100 then r.AssemblyLinearVelocity=Vector3.zero end
+    end))
+end
+
+local function OnCharacterAdded()
+    task.wait(0.5); TweenTPActive=false
+    if SpinBAV then pcall(function() SpinBAV:Destroy() end); SpinBAV=nil end
+    RefreshDefaults()
+    if State.Movement.Fly       then SetupFly()      end
+    if State.Movement.Spin      then SetupSpin()     end
+    if State.Movement.WalkSpeed then ApplyWalkSpeed() end
+    if State.Movement.JumpPower then local h=GetHumanoid(LocalPlayer); if h then h.JumpPower=State.Movement.JumpPowerValue end end
+    if State.Movement.GodMode   then SetupGodMode()  end
+    if State.Movement.InfJump   then SetupInfJump()  end
+    if State.Movement.Noclip    then SetupNoclip()    end
+    if State.Movement.HoverPlayer then SetupHoverPlayer() end
+end
+
+-- ============================================================
+-- // COIN FARMING
+-- ============================================================
+local _visitedCoins = {}
+
+local function getNearestCoin(hrp)
+    local nearest, nearestDist = nil, math.huge
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name=="Coin_Server" and obj:IsA("BasePart") and not _visitedCoins[obj] then
+            local dist=(obj.Position-hrp.Position).Magnitude
+            if dist<nearestDist then nearestDist=dist; nearest=obj end
+        end
+    end
+    if not nearest then
+        _visitedCoins={}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name=="Coin_Server" and obj:IsA("BasePart") then
+                local dist=(obj.Position-hrp.Position).Magnitude
+                if dist<nearestDist then nearestDist=dist; nearest=obj end
+            end
+        end
+    end
+    return nearest, nearestDist
+end
+
+local function stopCoinFarm()
+    State.Farming.CoinFarm=false; Drop("CoinFarmNoclip"); _visitedCoins={}
+end
+
+local function isInLobby()
+    local char=LocalPlayer.Character; if not char then return true end
+    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return true end
+    return hum.Health<=0 or hum:GetState()==Enum.HumanoidStateType.Dead
+end
+
+local function coinsExistInWorkspace()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name=="Coin_Server" and obj:IsA("BasePart") then return true end
+    end
+    return false
+end
+
+local function startCoinFarmLoop()
+    if State.Farming.CoinFarm then return end
+    State.Farming.CoinFarm=true; _visitedCoins={}
+    Conn("CoinFarmNoclip", RunService.Stepped:Connect(function()
+        if LocalPlayer.Character then
+            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide=false end
+            end
+        end
+    end))
+    task.spawn(function()
+        while State.Farming.CoinFarm do
+            if isInLobby() then stopCoinFarm(); break end
+            local char=LocalPlayer.Character; if not char then task.wait(0.5); break end
+            local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(0.5); break end
+            local coin, dist=getNearestCoin(hrp)
+            if not coin then task.wait(0.5); break end
+            _visitedCoins[coin]=true
+            local duration=math.max(dist/State.Farming.CoinFarmSpeed, 0.2)
+            local coinPos=coin.Position
+            local targetCF=CFrame.new(coinPos.X, coinPos.Y+(hrp.Size.Y/2), coinPos.Z)
+            local tw=TweenService:Create(hrp,TweenInfo.new(duration,Enum.EasingStyle.Linear,Enum.EasingDirection.Out),{CFrame=targetCF})
+            tw:Play(); tw.Completed:Wait()
+            task.wait(math.max(State.Farming.CoinFarmDelay, 0))
+        end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    stopCoinFarm()
+    local humanoid=character:WaitForChild("Humanoid")
+    humanoid.Died:Connect(function() stopCoinFarm() end)
+    if State.Farming.CoinFarmWanted then
+        task.spawn(function()
+            local waited=0
+            while waited<60 do
+                if coinsExistInWorkspace() then
+                    task.wait(0.5)
+                    if State.Farming.CoinFarmWanted and not State.Farming.CoinFarm then
+                        startCoinFarmLoop()
+                    end
+                    return
+                end
+                task.wait(1); waited=waited+1
+            end
+        end)
+    end
+end)
+
+-- ============================================================
+-- // TRIGGERBOT
+-- ============================================================
+local function SimulateLMBClick()
+    if mouse1click then pcall(mouse1click)
+    elseif mouse1press then pcall(mouse1press); task.delay(0.05,function() pcall(mouse1release) end) end
+end
+
+local function RunTriggerbot(dt)
+    if not State.Triggerbot.Enabled then _tbWasInView=false; _tbSpamTimer=0; return end
+    local inView=false; local radius=State.Triggerbot.Radius; local cx,cy=_vpCenter.X,_vpCenter.Y
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and IsAlive(p) and not (State.Triggerbot.TeamCheck and IsTeammate(p)) then
+            local char=GetCharacter(p); local head=char and char:FindFirstChild("Head")
+            if head then
+                local sp,on=W2S(head.Position)
+                if on and (sp-Vector2.new(cx,cy)).Magnitude<=radius then
+                    if not State.Triggerbot.WallCheck or RaycastVisible(head) then inView=true; break end
+                end
+            end
+        end
+    end
+    if State.Triggerbot.Spam then
+        if inView then
+            _tbSpamTimer=_tbSpamTimer+dt
+            if _tbSpamTimer>=State.Triggerbot.Delay then _tbSpamTimer=0; SimulateLMBClick() end
+        else _tbSpamTimer=0 end
+    else
+        if inView and not _tbWasInView then SimulateLMBClick() end
+    end
+    _tbWasInView=inView
+end
+
+-- ============================================================
+-- // CONFIG SYSTEM
+-- ============================================================
+local CFG_FOLDER="polaris_mm2_configs"; local CFG_EXT=".json"
+
+local function C3S(c) return {c.R,c.G,c.B} end
+local function SC3(t) if type(t)~="table" or not t[1] then return nil end; return Color3.new(t[1],t[2],t[3]) end
+
+local function SerializeState()
+    return {
+        Aimbot={Enabled=State.Aimbot.Enabled,KeepLocked=State.Aimbot.KeepLocked,Smoothness=State.Aimbot.Smoothness,FOV=State.Aimbot.FOV,Color=C3S(State.Aimbot.Color),LockKey=State.Aimbot.LockKey,WallCheck=State.Aimbot.WallCheck,Prediction=State.Aimbot.Prediction,PredictionStrength=State.Aimbot.PredictionStrength,TeamCheck=State.Aimbot.TeamCheck,RainbowFOV=State.Aimbot.RainbowFOV,RainbowSpeed=State.Aimbot.RainbowSpeed,TargetPart=State.Aimbot.TargetPart},
+        ESP={Enabled=State.ESP.Enabled,Box=State.ESP.Box,Skeleton=State.ESP.Skeleton,Names=State.ESP.Names,Distance=State.ESP.Distance,Highlight=State.ESP.Highlight,Tracer=State.ESP.Tracer,Color=C3S(State.ESP.Color),Rainbow=State.ESP.Rainbow,RainbowSpeed=State.ESP.RainbowSpeed,TeamCheck=State.ESP.TeamCheck,TeamMode=State.ESP.TeamMode,TeamColor=C3S(State.ESP.TeamColor),MaxDist=State.ESP.MaxDist},
+        RoleESP={InnocentEnabled=State.RoleESP.InnocentEnabled,SheriffEnabled=State.RoleESP.SheriffEnabled,MurdererEnabled=State.RoleESP.MurdererEnabled,GunDropEnabled=State.RoleESP.GunDropEnabled,InnocentColor=C3S(State.RoleESP.InnocentColor),SheriffColor=C3S(State.RoleESP.SheriffColor),MurdererColor=C3S(State.RoleESP.MurdererColor),GunDropColor=C3S(State.RoleESP.GunDropColor)},
+        Movement={WalkSpeed=State.Movement.WalkSpeed,WalkSpeedValue=State.Movement.WalkSpeedValue,JumpPower=State.Movement.JumpPower,JumpPowerValue=State.Movement.JumpPowerValue,InfJump=State.Movement.InfJump,Fly=State.Movement.Fly,FlySpeed=State.Movement.FlySpeed,Spin=State.Movement.Spin,SpinSpeed=State.Movement.SpinSpeed,TPWalk=State.Movement.TPWalk,TPWalkTween=State.Movement.TPWalkTween,TPWalkSpeed=State.Movement.TPWalkSpeed,ClickTP=State.Movement.ClickTP,ClickTweenTP=State.Movement.ClickTweenTP,ClickTweenTPSpeed=State.Movement.ClickTweenTPSpeed,Noclip=State.Movement.Noclip,GodMode=State.Movement.GodMode,Orbit=State.Movement.Orbit,OrbitSpeed=State.Movement.OrbitSpeed,OrbitRadius=State.Movement.OrbitRadius,OrbitMode=State.Movement.OrbitMode,OrbitCooldown=State.Movement.OrbitCooldown,HoverPlayer=State.Movement.HoverPlayer,HoverHeight=State.Movement.HoverHeight,HoverSpeed=State.Movement.HoverSpeed,HoverMode=State.Movement.HoverMode},
+        Farming={CoinFarmSpeed=State.Farming.CoinFarmSpeed,CoinFarmDelay=State.Farming.CoinFarmDelay},
+        Triggerbot={Enabled=State.Triggerbot.Enabled,Spam=State.Triggerbot.Spam,WallCheck=State.Triggerbot.WallCheck,TeamCheck=State.Triggerbot.TeamCheck,Radius=State.Triggerbot.Radius,Delay=State.Triggerbot.Delay},
+        Fullbright=State.Fullbright,NoFog=State.NoFog,NoShadows=State.NoShadows,FPSBoost=State.FPSBoost,AntiFling=State.AntiFling,CameraFOV=State.CameraFOV,
+    }
+end
+
+local function CFGEnsureFolder()
+    pcall(function() if isfolder and not isfolder(CFG_FOLDER) then if makefolder then makefolder(CFG_FOLDER) end end end)
+end
+local function CFGList()
+    local names={}
+    pcall(function()
+        if not (isfolder and listfiles) then return end
+        if not isfolder(CFG_FOLDER) then return end
+        for _,f in ipairs(listfiles(CFG_FOLDER)) do
+            if not f:match("%.json$") then continue end
+            local name=f:match("[/\\]?([^/\\]+)$")
+            if name then name=name:gsub("%.json$",""); if name~="" then table.insert(names,name) end end
+        end
+    end); return names
+end
+local function CFGSave(name)
+    if not writefile then return false,"writefile not available" end; CFGEnsureFolder()
+    local ok,data=pcall(SerializeState); if not ok then return false,"serialization failed" end
+    local ok2,json=pcall(HttpService.JSONEncode,HttpService,data); if not ok2 then return false,"JSON encode failed" end
+    local ok3=pcall(writefile,CFG_FOLDER.."/"..name..CFG_EXT,json); if not ok3 then return false,"write failed" end
+    return true
+end
+local function CFGLoad(name)
+    if not readfile then return false,"readfile not available" end
+    local ok,json=pcall(readfile,CFG_FOLDER.."/"..name..CFG_EXT)
+    if not ok or not json or json=="" then return false,"file not found" end
+    local ok2,data=pcall(HttpService.JSONDecode,HttpService,json)
+    if not ok2 or not data then return false,"JSON decode failed" end
+    if data.Aimbot then for k,v in pairs(data.Aimbot) do if k=="Color" then State.Aimbot.Color=SC3(v) or State.Aimbot.Color elseif State.Aimbot[k]~=nil then State.Aimbot[k]=v end end end
+    if data.ESP then for k,v in pairs(data.ESP) do if k=="Color" then State.ESP.Color=SC3(v) or State.ESP.Color elseif k=="TeamColor" then State.ESP.TeamColor=SC3(v) or State.ESP.TeamColor elseif State.ESP[k]~=nil then State.ESP[k]=v end end; SetupESP() end
+    if data.RoleESP then for k,v in pairs(data.RoleESP) do if k:find("Color") then State.RoleESP[k]=SC3(v) or State.RoleESP[k] elseif State.RoleESP[k]~=nil then State.RoleESP[k]=v end end end
+    if data.Movement then for k,v in pairs(data.Movement) do if State.Movement[k]~=nil then State.Movement[k]=v end end; ApplyWalkSpeed(); if State.Movement.Fly then SetupFly() end; if State.Movement.Spin then SetupSpin() end; if State.Movement.InfJump then SetupInfJump() end; if State.Movement.Noclip then SetupNoclip() end; if State.Movement.GodMode then SetupGodMode() end; if State.Movement.Orbit then SetupOrbit() end; if State.Movement.HoverPlayer then SetupHoverPlayer() end end
+    if data.Farming then if data.Farming.CoinFarmSpeed then State.Farming.CoinFarmSpeed=data.Farming.CoinFarmSpeed end; if data.Farming.CoinFarmDelay then State.Farming.CoinFarmDelay=data.Farming.CoinFarmDelay end end
+    if data.Triggerbot then for k,v in pairs(data.Triggerbot) do if State.Triggerbot[k]~=nil then State.Triggerbot[k]=v end end end
+    if data.Fullbright~=nil then State.Fullbright=data.Fullbright; SetupFullbright() end
+    if data.NoFog~=nil then State.NoFog=data.NoFog; SetupNoFog() end
+    if data.NoShadows~=nil then State.NoShadows=data.NoShadows; SetupNoShadows() end
+    if data.FPSBoost~=nil then State.FPSBoost=data.FPSBoost; SetupFPSBoost() end
+    if data.AntiFling~=nil then State.AntiFling=data.AntiFling; SetupAntiFling() end
+    if data.CameraFOV~=nil then State.CameraFOV=data.CameraFOV; GetCamera().FieldOfView=data.CameraFOV end
+    return true
+end
+local function CFGDelete(name)
+    pcall(function() if delfile then delfile(CFG_FOLDER.."/"..name..CFG_EXT) end end)
+end
+
+-- ============================================================
+-- // RAYFIELD WINDOW
+-- ============================================================
+local Window = Rayfield:CreateWindow({
+    Name                   = "MM2 | EchoX",
+    Icon                   = 0,
+    LoadingTitle           = "MM2 | EchoX",
+    LoadingSubtitle        = "Made by EchoX",
+    ShowText               = "EchoX",
+    Theme                  = "Default",
+    ToggleUIKeybind        = "RightAlt",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings   = false,
+    ConfigurationSaving    = { Enabled = false, FolderName = nil, FileName = "EchoX_MM2" },
+    Discord                = { Enabled = false, Invite = "", RememberJoins = false },
+    KeySystem              = false,
+})
+
+-- ============================================================
+-- // TABS
+-- ============================================================
+local AimbotTab   = Window:CreateTab("Aimbot",   4483362458)
+local ESPTab      = Window:CreateTab("ESP",       4483362458)
+local MovementTab = Window:CreateTab("Movement",  4483362458)
+local FarmingTab  = Window:CreateTab("Farming",   4483362458)
+local VisualTab   = Window:CreateTab("Visuals",   4483362458)
+local MiscTab     = Window:CreateTab("Misc",      4483362458)
+local ConfigsTab  = Window:CreateTab("Configs",   4483362458)
+
+-- NOTE: All Rayfield Dropdown callbacks receive a TABLE e.g. {"Head"}.
+-- Always use  opts[1]  to extract the string value.
+
+-- ============================================================
+-- // AIMBOT TAB
+-- ============================================================
+AimbotTab:CreateSection("Aim Assist")
+
+AimbotTab:CreateToggle({ Name="Enable Aimbot", CurrentValue=false, Flag="AimbotEnabled",
+    Callback=function(v) State.Aimbot.Enabled=v end })
+
+AimbotTab:CreateToggle({ Name="Stay Locked", CurrentValue=false, Flag="AimbotKeepLocked",
+    Callback=function(v) State.Aimbot.KeepLocked=v end })
+
+AimbotTab:CreateToggle({ Name="Wall Check", CurrentValue=false, Flag="AimbotWallCheck",
+    Callback=function(v) State.Aimbot.WallCheck=v end })
+
+AimbotTab:CreateToggle({ Name="Prediction", CurrentValue=false, Flag="AimbotPrediction",
+    Callback=function(v) State.Aimbot.Prediction=v end })
+
+AimbotTab:CreateSlider({ Name="Prediction Strength", Range={1,200}, Increment=1, Suffix="ms",
+    CurrentValue=65, Flag="AimbotPredStr",
+    Callback=function(v) State.Aimbot.PredictionStrength=v/1000 end })
+
+AimbotTab:CreateSlider({ Name="Aim Speed", Range={1,100}, Increment=1, Suffix="%",
+    CurrentValue=50, Flag="AimbotSmooth",
+    Callback=function(v) State.Aimbot.Smoothness=v/100 end })
+
+AimbotTab:CreateSlider({ Name="FOV Radius", Range={10,500}, Increment=5, Suffix="px",
+    CurrentValue=150, Flag="AimbotFOV",
+    Callback=function(v) State.Aimbot.FOV=v end })
+
+AimbotTab:CreateColorPicker({ Name="FOV Color", Color=Color3.fromRGB(255,0,0), Flag="AimbotColor",
+    Callback=function(v) State.Aimbot.Color=v end })
+
+AimbotTab:CreateToggle({ Name="Rainbow FOV", CurrentValue=false, Flag="AimbotRainbow",
+    Callback=function(v) State.Aimbot.RainbowFOV=v end })
+
+AimbotTab:CreateSlider({ Name="Rainbow Speed", Range={1,20}, Increment=1,
+    CurrentValue=4, Flag="AimbotRainbowSpd",
+    Callback=function(v) State.Aimbot.RainbowSpeed=v/10 end })
+
+AimbotTab:CreateSection("Target Bone")
+
+AimbotTab:CreateDropdown({ Name="Target Part",
+    Options={"Head","Torso","HumanoidRootPart"},
+    CurrentOption={"Head"}, MultipleOptions=false, Flag="AimbotTargetPart",
+    Callback=function(opts)
+        State.Aimbot.TargetPart = type(opts)=="table" and opts[1] or opts
+    end })
+
+AimbotTab:CreateSection("Settings")
+
+AimbotTab:CreateToggle({ Name="Team Check", CurrentValue=false, Flag="AimbotTeamCheck",
+    Callback=function(v) State.Aimbot.TeamCheck=v end })
+
+AimbotTab:CreateDropdown({ Name="Aim Hold Key",
+    Options={"MouseButton2","MouseButton1","MouseButton3","E","Q","F","Z","X","LeftShift","LeftAlt","LeftControl","R","T","G","H"},
+    CurrentOption={"MouseButton2"}, MultipleOptions=false, Flag="AimbotLockKey",
+    Callback=function(opts)
+        State.Aimbot.LockKey = type(opts)=="table" and opts[1] or opts
+    end })
+
+AimbotTab:CreateSection("Triggerbot")
+
+AimbotTab:CreateToggle({ Name="Enable Triggerbot", CurrentValue=false, Flag="TBEnabled",
+    Callback=function(v) State.Triggerbot.Enabled=v end })
+
+AimbotTab:CreateToggle({ Name="Spam Mode", CurrentValue=false, Flag="TBSpam",
+    Callback=function(v) State.Triggerbot.Spam=v end })
+
+AimbotTab:CreateToggle({ Name="Wall Check (TB)", CurrentValue=false, Flag="TBWallCheck",
+    Callback=function(v) State.Triggerbot.WallCheck=v end })
+
+AimbotTab:CreateToggle({ Name="Team Check (TB)", CurrentValue=false, Flag="TBTeamCheck",
+    Callback=function(v) State.Triggerbot.TeamCheck=v end })
+
+AimbotTab:CreateSlider({ Name="Crosshair Radius", Range={1,80}, Increment=1, Suffix="px",
+    CurrentValue=15, Flag="TBRadius",
+    Callback=function(v) State.Triggerbot.Radius=v end })
+
+AimbotTab:CreateSlider({ Name="Spam Delay", Range={1,100}, Increment=1, Suffix="ms",
+    CurrentValue=80, Flag="TBDelay",
+    Callback=function(v) State.Triggerbot.Delay=v/1000 end })
+
+-- ============================================================
+-- // ESP TAB
+-- ============================================================
+ESPTab:CreateSection("Player ESP")
+
+ESPTab:CreateToggle({ Name="Enable ESP", CurrentValue=false, Flag="ESPEnabled",
+    Callback=function(v) State.ESP.Enabled=v; SetupESP() end })
+
+ESPTab:CreateSlider({ Name="Render Distance", Range={50,2000}, Increment=50, Suffix=" st",
+    CurrentValue=500, Flag="ESPMaxDist",
+    Callback=function(v) State.ESP.MaxDist=v end })
+
+ESPTab:CreateToggle({ Name="Box", CurrentValue=false, Flag="ESPBox",
+    Callback=function(v) State.ESP.Box=v end })
+
+ESPTab:CreateToggle({ Name="Skeleton", CurrentValue=false, Flag="ESPSkeleton",
+    Callback=function(v) State.ESP.Skeleton=v end })
+
+ESPTab:CreateToggle({ Name="Names", CurrentValue=false, Flag="ESPNames",
+    Callback=function(v) State.ESP.Names=v end })
+
+ESPTab:CreateToggle({ Name="Distance", CurrentValue=false, Flag="ESPDistance",
+    Callback=function(v) State.ESP.Distance=v end })
+
+ESPTab:CreateToggle({ Name="Highlight", CurrentValue=false, Flag="ESPHighlight",
+    Callback=function(v) State.ESP.Highlight=v end })
+
+ESPTab:CreateToggle({ Name="Tracer", CurrentValue=false, Flag="ESPTracer",
+    Callback=function(v) State.ESP.Tracer=v end })
+
+ESPTab:CreateColorPicker({ Name="ESP Color", Color=Color3.fromRGB(255,255,255), Flag="ESPColor",
+    Callback=function(v) State.ESP.Color=v end })
+
+ESPTab:CreateToggle({ Name="Rainbow ESP", CurrentValue=false, Flag="ESPRainbow",
+    Callback=function(v) State.ESP.Rainbow=v end })
+
+ESPTab:CreateSlider({ Name="Rainbow Speed", Range={1,20}, Increment=1, CurrentValue=4, Flag="ESPRainbowSpd",
+    Callback=function(v) State.ESP.RainbowSpeed=v/10 end })
+
+ESPTab:CreateToggle({ Name="Team Check", CurrentValue=false, Flag="ESPTeamCheck",
+    Callback=function(v) State.ESP.TeamCheck=v end })
+
+ESPTab:CreateColorPicker({ Name="Team Color", Color=Color3.fromRGB(0,255,120), Flag="ESPTeamColor",
+    Callback=function(v) State.ESP.TeamColor=v end })
+
+ESPTab:CreateDropdown({ Name="Team Mode",
+    Options={"hide","color"},
+    CurrentOption={"hide"}, MultipleOptions=false, Flag="ESPTeamMode",
+    Callback=function(opts)
+        State.ESP.TeamMode = type(opts)=="table" and opts[1] or opts
+    end })
+
+ESPTab:CreateSection("Role Highlights")
+
+ESPTab:CreateToggle({ Name="Innocent Highlight", CurrentValue=false, Flag="RoleInnocent",
+    Callback=function(v) State.RoleESP.InnocentEnabled=v; if not v then ClearAllMM2Highlights() end end })
+
+ESPTab:CreateColorPicker({ Name="Innocent Color", Color=Color3.fromRGB(0,255,0), Flag="RoleInnocentColor",
+    Callback=function(v) State.RoleESP.InnocentColor=v end })
+
+ESPTab:CreateToggle({ Name="Sheriff Highlight", CurrentValue=false, Flag="RoleSheriff",
+    Callback=function(v) State.RoleESP.SheriffEnabled=v; if not v then ClearAllMM2Highlights() end end })
+
+ESPTab:CreateColorPicker({ Name="Sheriff Color", Color=Color3.fromRGB(0,100,255), Flag="RoleSheriffColor",
+    Callback=function(v) State.RoleESP.SheriffColor=v end })
+
+ESPTab:CreateToggle({ Name="Murderer Highlight", CurrentValue=false, Flag="RoleMurderer",
+    Callback=function(v) State.RoleESP.MurdererEnabled=v; if not v then ClearAllMM2Highlights() end end })
+
+ESPTab:CreateColorPicker({ Name="Murderer Color", Color=Color3.fromRGB(255,0,0), Flag="RoleMurdererColor",
+    Callback=function(v) State.RoleESP.MurdererColor=v end })
+
+ESPTab:CreateSection("Item ESP")
+
+ESPTab:CreateToggle({ Name="Gun Drop Highlight", CurrentValue=false, Flag="RoleGunDrop",
+    Callback=function(v) State.RoleESP.GunDropEnabled=v; if not v then ClearAllMM2Highlights() end end })
+
+ESPTab:CreateColorPicker({ Name="Gun Drop Color", Color=Color3.fromRGB(255,255,0), Flag="RoleGunDropColor",
+    Callback=function(v) State.RoleESP.GunDropColor=v end })
+
+-- ============================================================
+-- // MOVEMENT TAB
+-- ============================================================
+MovementTab:CreateSection("Walk Speed")
+
+MovementTab:CreateToggle({ Name="Custom WalkSpeed", CurrentValue=false, Flag="MoveWalkSpeed",
+    Callback=function(v) State.Movement.WalkSpeed=v; ApplyWalkSpeed() end })
+
+MovementTab:CreateSlider({ Name="Walk Speed", Range={0,500}, Increment=1, CurrentValue=16, Flag="MoveWSValue",
+    Callback=function(v) State.Movement.WalkSpeedValue=v; if State.Movement.WalkSpeed then ApplyWalkSpeed() end end })
+
+MovementTab:CreateSection("Jump")
+
+MovementTab:CreateToggle({ Name="Custom Jump Power", CurrentValue=false, Flag="MoveJumpPower",
+    Callback=function(v) State.Movement.JumpPower=v; local h=GetHumanoid(LocalPlayer); if h then h.JumpPower=v and State.Movement.JumpPowerValue or Defaults.JumpPower end end })
+
+MovementTab:CreateSlider({ Name="Jump Power", Range={0,500}, Increment=1, CurrentValue=50, Flag="MoveJPValue",
+    Callback=function(v) State.Movement.JumpPowerValue=v; if State.Movement.JumpPower then local h=GetHumanoid(LocalPlayer); if h then h.JumpPower=v end end end })
+
+MovementTab:CreateToggle({ Name="Infinite Jump", CurrentValue=false, Flag="MoveInfJump",
+    Callback=function(v) State.Movement.InfJump=v; SetupInfJump() end })
+
+MovementTab:CreateSection("Fly")
+
+MovementTab:CreateToggle({ Name="Fly", CurrentValue=false, Flag="MoveFly",
+    Callback=function(v) State.Movement.Fly=v; SetupFly() end })
+
+MovementTab:CreateSlider({ Name="Fly Speed", Range={0,300}, Increment=1, CurrentValue=50, Flag="MoveFlySpd",
+    Callback=function(v) State.Movement.FlySpeed=v end })
+
+MovementTab:CreateSection("Utility")
+
+MovementTab:CreateToggle({ Name="Noclip", CurrentValue=false, Flag="MoveNoclip",
+    Callback=function(v) State.Movement.Noclip=v; SetupNoclip() end })
+
+MovementTab:CreateToggle({ Name="GodMode", CurrentValue=false, Flag="MoveGodMode",
+    Callback=function(v) State.Movement.GodMode=v; SetupGodMode() end })
+
+MovementTab:CreateToggle({ Name="Anti-Fling", CurrentValue=false, Flag="MoveAntiFling",
+    Callback=function(v) State.AntiFling=v; SetupAntiFling() end })
+
+MovementTab:CreateSection("TP Walk")
+
+MovementTab:CreateToggle({ Name="TP Walk", CurrentValue=false, Flag="MoveTPWalk",
+    Callback=function(v) State.Movement.TPWalk=v; SetupTPWalk() end })
+
+MovementTab:CreateToggle({ Name="Tween Mode", CurrentValue=false, Flag="MoveTPWalkTween",
+    Callback=function(v) State.Movement.TPWalkTween=v; if State.Movement.TPWalk then SetupTPWalk() end end })
+
+MovementTab:CreateSlider({ Name="TP Walk Speed", Range={1,300}, Increment=1, CurrentValue=50, Flag="MoveTPWalkSpd",
+    Callback=function(v) State.Movement.TPWalkSpeed=v end })
+
+MovementTab:CreateSection("Click Teleport")
+
+MovementTab:CreateToggle({ Name="Click Tween TP", CurrentValue=false, Flag="MoveClickTween",
+    Callback=function(v) State.Movement.ClickTweenTP=v; if v then State.Movement.ClickTP=false end end })
+
+MovementTab:CreateSlider({ Name="Tween TP Speed", Range={1,100}, Increment=1, CurrentValue=5, Flag="MoveClickTweenSpd",
+    Callback=function(v) State.Movement.ClickTweenTPSpeed=v end })
+
+MovementTab:CreateToggle({ Name="Click TP (Instant)", CurrentValue=false, Flag="MoveClickTP",
+    Callback=function(v) State.Movement.ClickTP=v; if v then State.Movement.ClickTweenTP=false end end })
+
+MovementTab:CreateSection("Spin")
+
+MovementTab:CreateToggle({ Name="Spin", CurrentValue=false, Flag="MoveSpin",
+    Callback=function(v) State.Movement.Spin=v; SetupSpin() end })
+
+MovementTab:CreateSlider({ Name="Spin Speed", Range={1,100}, Increment=1, CurrentValue=20, Flag="MoveSpinSpd",
+    Callback=function(v) State.Movement.SpinSpeed=v end })
+
+MovementTab:CreateSection("Orbit")
+
+MovementTab:CreateToggle({ Name="Player Orbit", CurrentValue=false, Flag="MoveOrbit",
+    Callback=function(v) State.Movement.Orbit=v; SetupOrbit() end })
+
+MovementTab:CreateSlider({ Name="Orbit Speed", Range={1,200}, Increment=1, CurrentValue=20, Flag="MoveOrbitSpd",
+    Callback=function(v) State.Movement.OrbitSpeed=v end })
+
+MovementTab:CreateSlider({ Name="Orbit Radius", Range={2,30}, Increment=1, CurrentValue=5, Flag="MoveOrbitRad",
+    Callback=function(v) State.Movement.OrbitRadius=v end })
+
+MovementTab:CreateDropdown({ Name="Orbit Mode",
+    Options={"Click to Select","Nearest Player","Auto Random"},
+    CurrentOption={"Click to Select"}, MultipleOptions=false, Flag="MoveOrbitMode",
+    Callback=function(opts)
+        local v = type(opts)=="table" and opts[1] or opts
+        local m = {["Click to Select"]="click",["Nearest Player"]="nearest",["Auto Random"]="auto"}
+        State.Movement.OrbitMode = m[v] or "click"
+        if State.Movement.Orbit then SetupOrbit() end
+    end })
+
+MovementTab:CreateSection("Hover Player")
+
+MovementTab:CreateToggle({ Name="Hover Player", CurrentValue=false, Flag="MoveHover",
+    Callback=function(v) State.Movement.HoverPlayer=v; SetupHoverPlayer() end })
+
+MovementTab:CreateSlider({ Name="Hover Height", Range={0,30}, Increment=1, Suffix=" st",
+    CurrentValue=8, Flag="MoveHoverH",
+    Callback=function(v) State.Movement.HoverHeight=v end })
+
+MovementTab:CreateSlider({ Name="Follow Speed", Range={1,100}, Increment=1, CurrentValue=20, Flag="MoveHoverSpd",
+    Callback=function(v) State.Movement.HoverSpeed=v end })
+
+MovementTab:CreateDropdown({ Name="Hover Mode",
+    Options={"Click to Select","Nearest Player"},
+    CurrentOption={"Click to Select"}, MultipleOptions=false, Flag="MoveHoverMode",
+    Callback=function(opts)
+        local v = type(opts)=="table" and opts[1] or opts
+        local m = {["Click to Select"]="click",["Nearest Player"]="nearest"}
+        State.Movement.HoverMode = m[v] or "click"
+        if State.Movement.HoverPlayer then SetupHoverPlayer() end
+    end })
+
+-- ============================================================
+-- // FARMING TAB
+-- ============================================================
+FarmingTab:CreateSection("Coin Farming")
+
+FarmingTab:CreateToggle({ Name="Coin Farm", CurrentValue=false, Flag="FarmCoin",
+    Callback=function(v)
+        State.Farming.CoinFarmWanted=v
+        if v then if not isInLobby() then startCoinFarmLoop() end
+        else stopCoinFarm() end
+    end })
+
+FarmingTab:CreateSlider({ Name="Farm Speed (st/s)", Range={5,40}, Increment=5, CurrentValue=20, Flag="FarmSpeed",
+    Callback=function(v) State.Farming.CoinFarmSpeed=v end })
+
+FarmingTab:CreateSlider({ Name="Coin Delay (x0.1s)", Range={0,30}, Increment=1, CurrentValue=8, Flag="FarmDelay",
+    Callback=function(v) State.Farming.CoinFarmDelay=v/10 end })
+
+-- ============================================================
+-- // VISUALS TAB
+-- ============================================================
+VisualTab:CreateSection("Camera")
+
+VisualTab:CreateSlider({ Name="Camera FOV", Range={10,120}, Increment=1, Suffix="°",
+    CurrentValue=70, Flag="VisCamFOV",
+    Callback=function(v) State.CameraFOV=v; GetCamera().FieldOfView=v end })
+
+VisualTab:CreateSection("Lighting")
+
+VisualTab:CreateToggle({ Name="Fullbright", CurrentValue=false, Flag="VisFullbright",
+    Callback=function(v) State.Fullbright=v; SetupFullbright() end })
+
+VisualTab:CreateToggle({ Name="No Fog", CurrentValue=false, Flag="VisNoFog",
+    Callback=function(v) State.NoFog=v; SetupNoFog() end })
+
+VisualTab:CreateToggle({ Name="No Shadows", CurrentValue=false, Flag="VisNoShadows",
+    Callback=function(v) State.NoShadows=v; SetupNoShadows() end })
+
+VisualTab:CreateSection("Performance")
+
+VisualTab:CreateToggle({ Name="Boost FPS", CurrentValue=false, Flag="VisFPSBoost",
+    Callback=function(v) State.FPSBoost=v; SetupFPSBoost() end })
+
+-- ============================================================
+-- // MISC TAB
+-- ============================================================
+MiscTab:CreateSection("Location")
+
+MiscTab:CreateButton({ Name="Copy Location",
+    Callback=function()
+        local root=GetRoot(LocalPlayer)
+        if root then
+            local p=root.Position
+            local txt=string.format("%.2f, %.2f, %.2f",p.X,p.Y,p.Z)
+            CopyToClipboard(txt); PolarisNotify("Copied",txt,2)
+        else
+            PolarisNotify("Error","No character found.",2)
+        end
+    end })
+
+MiscTab:CreateSection("Kill Script")
+
+MiscTab:CreateButton({ Name="⚠  Kill Script",
+    Callback=function()
+        for name in pairs(Connections) do pcall(function() Connections[name]:Disconnect() end); Connections[name]=nil end
+        pcall(ClearAllESP); pcall(ClearAllMM2Highlights)
+        if _G._PolarisAllDrawings then
+            for _, d in ipairs(_G._PolarisAllDrawings) do pcall(function() d:Remove() end) end
+            _G._PolarisAllDrawings=nil
+        end
+        pcall(function()
+            local h=GetHumanoid(LocalPlayer)
+            if h then
+                h.WalkSpeed=Defaults.WalkSpeed; h.JumpPower=Defaults.JumpPower; h.PlatformStand=false
+                pcall(function() h.BreakJointsOnDeath=true end)
+                pcall(function() h.MaxHealth=100; h.Health=100 end)
+            end
+        end)
+        pcall(function()
+            local root=GetRoot(LocalPlayer)
+            if root then
+                local bv=root:FindFirstChild("FlyBV"); if bv then bv:Destroy() end
+                local bg=root:FindFirstChild("FlyBG"); if bg then bg:Destroy() end
+            end
+        end)
+        if SpinBAV then pcall(function() SpinBAV:Destroy() end); SpinBAV=nil end
+        for part in pairs(NoclipParts) do pcall(function() if part and part.Parent then part.CanCollide=true end end) end
+        NoclipParts={}
+        pcall(function()
+            Lighting.Ambient=LDefault.Ambient; Lighting.OutdoorAmbient=LDefault.OutdoorAmbient
+            Lighting.Brightness=LDefault.Brightness; Lighting.GlobalShadows=LDefault.GlobalShadows
+            Lighting.FogEnd=LDefault.FogEnd; Lighting.FogStart=LDefault.FogStart
+        end)
+        pcall(function() local a=Lighting:FindFirstChildOfClass("Atmosphere"); if a and next(AtmoDefault) then SetAtmo(a,AtmoDefault) end end)
+        pcall(function() for fx,was in pairs(PostFXSaved) do pcall(function() if fx and fx.Parent then fx.Enabled=was end end) end end)
+        pcall(function() settings().Rendering.QualityLevel=Enum.QualityLevel.Automatic end)
+        pcall(function() GetCamera().FieldOfView=70 end)
+        pcall(function() Rayfield:Destroy() end)
+        LockedTarget=nil; OrbitTarget=nil; HoverTarget=nil; TweenTPActive=false
+        print("[MM2 | EchoX] script killed.")
+    end })
+
+-- ============================================================
+-- // CONFIGS TAB
+-- ============================================================
+ConfigsTab:CreateSection("Save / Load")
+
+ConfigsTab:CreateInput({ Name="Config Name", CurrentValue="", PlaceholderText="e.g. my_config",
+    RemoveTextAfterFocusLost=false, Flag="CfgName",
+    Callback=function(text) cfgNameValue=text end })
+
+ConfigsTab:CreateButton({ Name="Save Config",
+    Callback=function()
+        local name=cfgNameValue:gsub("^%s+",""):gsub("%s+$","")
+        if name=="" then PolarisNotify("Config","Enter a name first.",2); return end
+        local ok,msg=CFGSave(name)
+        if ok then PolarisNotify("Config","Saved: "..name,3)
+        else PolarisNotify("Config","Save failed: "..(msg or "?"),3) end
+    end })
+
+ConfigsTab:CreateButton({ Name="Load Config",
+    Callback=function()
+        local name=cfgNameValue:gsub("^%s+",""):gsub("%s+$","")
+        if name=="" then PolarisNotify("Config","Enter a name first.",2); return end
+        local ok,msg=CFGLoad(name)
+        if ok then PolarisNotify("Config","Loaded: "..name,3)
+        else PolarisNotify("Config","Load failed: "..(msg or "?"),3) end
+    end })
+
+ConfigsTab:CreateButton({ Name="Delete Config",
+    Callback=function()
+        local name=cfgNameValue:gsub("^%s+",""):gsub("%s+$","")
+        if name=="" then PolarisNotify("Config","Enter a name first.",2); return end
+        CFGDelete(name); PolarisNotify("Config","Deleted: "..name,2)
+    end })
+
+ConfigsTab:CreateSection("Saved Profiles")
+
+ConfigsTab:CreateButton({ Name="List Saved Configs",
+    Callback=function()
+        local names=CFGList()
+        if #names==0 then PolarisNotify("Configs","No saved configs found.",3); return end
+        PolarisNotify("Configs","Saved: "..table.concat(names,", "),5)
+    end })
+
+-- ============================================================
+-- // FOV CIRCLE  (Drawing-based — unchanged)
+-- ============================================================
+local FOV_SEGS=64; local FOVLines={}; local TWO_PI=math.pi*2
+for i=1,FOV_SEGS do
+    local ln=TrackDrawing("Line"); ln.Visible=false; ln.Thickness=1; FOVLines[i]=ln
+end
+
+local function UpdateFOVCircle(col, vis)
+    if not vis then for i=1,FOV_SEGS do if FOVLines[i].Visible then FOVLines[i].Visible=false end end; return end
+    local mp=UserInputService:GetMouseLocation(); local cx,cy,r=mp.X,mp.Y,State.Aimbot.FOV
+    for i=1,FOV_SEGS do
+        local ln=FOVLines[i]; local a1=(i-1)/FOV_SEGS*TWO_PI; local a2=i/FOV_SEGS*TWO_PI
+        ln.From=Vector2.new(cx+math.cos(a1)*r,cy+math.sin(a1)*r)
+        ln.To  =Vector2.new(cx+math.cos(a2)*r,cy+math.sin(a2)*r)
+        ln.Color=col; if not ln.Visible then ln.Visible=true end
+    end
+end
+
+-- ============================================================
+-- // TRIGGERBOT CROSSHAIR  (Drawing-based — unchanged)
+-- ============================================================
+local TBCircle=TrackDrawing("Circle"); TBCircle.Visible=false; TBCircle.Thickness=1; TBCircle.NumSides=40; TBCircle.Filled=false; TBCircle.Color=Color3.fromRGB(255,255,255)
+local TBCrossH=TrackDrawing("Line"); TBCrossH.Visible=false; TBCrossH.Thickness=1; TBCrossH.Color=Color3.fromRGB(255,255,255)
+local TBCrossV=TrackDrawing("Line"); TBCrossV.Visible=false; TBCrossV.Thickness=1; TBCrossV.Color=Color3.fromRGB(255,255,255)
+local TBDot=TrackDrawing("Circle"); TBDot.Visible=false; TBDot.Thickness=1; TBDot.Radius=2; TBDot.NumSides=12; TBDot.Filled=true; TBDot.Color=Color3.fromRGB(255,255,255)
+
+local function UpdateTBCrosshair()
+    if not State.Triggerbot.Enabled then
+        TBCircle.Visible=false; TBCrossH.Visible=false; TBCrossV.Visible=false; TBDot.Visible=false; return
+    end
+    local cx,cy=_vpCenter.X,_vpCenter.Y; local r=State.Triggerbot.Radius; local csz=8
+    TBCircle.Position=Vector2.new(cx,cy); TBCircle.Radius=r; TBCircle.Visible=true
+    TBCrossH.From=Vector2.new(cx-csz,cy); TBCrossH.To=Vector2.new(cx+csz,cy); TBCrossH.Visible=true
+    TBCrossV.From=Vector2.new(cx,cy-csz); TBCrossV.To=Vector2.new(cx,cy+csz); TBCrossV.Visible=true
+    TBDot.Position=Vector2.new(cx,cy); TBDot.Visible=true
+end
+
+-- ============================================================
+-- // MAIN RENDER LOOP
+-- ============================================================
+local _fpsCount=0; local _fpsAccum=0; local _wmAccum=0
+
+Conn("RenderMain", RunService.RenderStepped:Connect(function(dt)
+    local cam=GetCamera()
+    _vpCenter=Vector2.new(cam.ViewportSize.X*0.5,cam.ViewportSize.Y*0.5)
+    _rainbowHueAimbot=(_rainbowHueAimbot+dt*State.Aimbot.RainbowSpeed)%1
+    _rainbowHueESP=(_rainbowHueESP+dt*State.ESP.RainbowSpeed)%1
+    local rainbowColAimbot=Color3.fromHSV(_rainbowHueAimbot,1,1)
+    local rainbowColESP=Color3.fromHSV(_rainbowHueESP,1,1)
+    UpdateFOVCircle(State.Aimbot.RainbowFOV and rainbowColAimbot or State.Aimbot.Color, State.Aimbot.Enabled)
+    UpdateTBCrosshair()
+    if State.Aimbot.Enabled then RunAimbot() end
+    RunTriggerbot(dt)
+    UpdateESP(rainbowColESP)
+end))
+
+-- Role ESP throttled to every 0.25s
+Conn("RoleESP", RunService.Heartbeat:Connect(function(dt)
+    _roleESPTimer=_roleESPTimer+dt
+    if _roleESPTimer<0.25 then return end
+    _roleESPTimer=0
+    UpdateMM2RoleESP()
+end))
+
+-- ============================================================
+-- // PLAYER & CHARACTER EVENTS
+-- ============================================================
+Players.PlayerAdded:Connect(function(player)
+    if State.ESP.Enabled then CreateESPForPlayer(player) end
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if State.ESP.Enabled then local d=ESPObjects[player]; if d then d.lastChar=nil end end
+    end)
+end)
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if State.ESP.Enabled then local d=ESPObjects[player]; if d then d.lastChar=nil end end
+        end)
+    end
+end
+Players.PlayerRemoving:Connect(function(player)
+    local d=ESPObjects[player]; if d then DestroyESPEntry(d); ESPObjects[player]=nil end
+end)
+
+Mouse.Button1Down:Connect(function()
+    local root=GetRoot(LocalPlayer); if not root then return end
+    if State.Movement.ClickTP then
+        root.CFrame=CFrame.new(Mouse.Hit.Position+Vector3.new(0,3,0))
+    elseif State.Movement.ClickTweenTP and not TweenTPActive then
+        TweenTPActive=true
+        local tgt=Mouse.Hit.Position+Vector3.new(0,3,0)
+        local dist=(tgt-root.Position).Magnitude
+        local tt=math.max(0.05,dist/(State.Movement.ClickTweenTPSpeed*20))
+        local tw=TweenService:Create(root,TweenInfo.new(tt,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{CFrame=CFrame.new(tgt)})
+        root.Anchored=true; tw:Play()
+        tw.Completed:Connect(function() root.Anchored=false; TweenTPActive=false end)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
