@@ -1,6 +1,7 @@
 -- // MM2 | EchoX
 -- // Murder Mystery 2
 -- // Made by EchoX
+-- // v2 — mobile support, highlight removed, shoot murderer button, bug fixes
 
 -- ============================================================
 -- // RE-INJECTION CLEANUP
@@ -101,12 +102,14 @@ local State = {
         Color = Color3.fromRGB(255, 0, 0), LockKey = "MouseButton2",
         WallCheck = false, Prediction = false, PredictionStrength = 0.065,
         TeamCheck = false, RainbowFOV = false, RainbowSpeed = 0.4, TargetPart = "Head",
+        MobileMode = false,   -- aims continuously without a key (for mobile)
     },
     ESP = {
         Enabled = false, Box = false, Skeleton = false, Names = false, Distance = false,
-        Highlight = false, Tracer = false, Color = Color3.fromRGB(255, 255, 255),
+        Tracer = false, Color = Color3.fromRGB(255, 255, 255),
         Rainbow = false, RainbowSpeed = 0.4, TeamCheck = false, TeamMode = "hide",
         TeamColor = Color3.fromRGB(0, 255, 120), MaxDist = 500,
+        -- Highlight removed — use Role ESP highlights instead
     },
     RoleESP = {
         InnocentEnabled = false, SheriffEnabled = false, MurdererEnabled = false, GunDropEnabled = false,
@@ -189,9 +192,19 @@ local function ClearAllMM2Highlights()
 end
 _G._MM2ESPCleanup = ClearAllMM2Highlights
 
+-- FIX: nil-safe Backpack check (Backpack may not exist on newly spawned players)
 local function HasTool(p, n)
     if not p or not p.Character then return false end
-    return p.Backpack:FindFirstChild(n) ~= nil or p.Character:FindFirstChild(n) ~= nil
+    local inBP   = p.Backpack and p.Backpack:FindFirstChild(n) ~= nil
+    local inChar = p.Character:FindFirstChild(n) ~= nil
+    return inBP or inChar
+end
+
+local function GetMurderer()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and HasTool(p, "Knife") then return p end
+    end
+    return nil
 end
 
 local function UpdateMM2RoleESP()
@@ -337,6 +350,8 @@ local function AimScanTarget()
 end
 
 local function IsAimKeyActive()
+    -- MobileMode: aimbot runs continuously without a key (for mobile devices)
+    if State.Aimbot.MobileMode then return true end
     local k = State.Aimbot.LockKey
     if k == "MouseButton2" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
     elseif k == "MouseButton1" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -351,7 +366,9 @@ end
 local function RunAimbot()
     if not State.Aimbot.Enabled then return end
     if not IsAimKeyActive() then
-        LockedTarget = nil; _lastTargetName = ""; _lastTargetHP = nil; _totalDamage = 0
+        if not State.Aimbot.MobileMode then
+            LockedTarget = nil; _lastTargetName = ""; _lastTargetHP = nil; _totalDamage = 0
+        end
         return
     end
     local sp = GetTargetSP(LockedTarget, State.Aimbot.KeepLocked)
@@ -389,7 +406,50 @@ local function RunAimbot()
 end
 
 -- ============================================================
--- // STANDARD ESP
+-- // SHOOT MURDERER (mobile-friendly one-tap fire)
+-- ============================================================
+local function SimulateLMBClick()
+    -- Try all available executor fire methods in order of reliability
+    if mouse1click then
+        pcall(mouse1click)
+    elseif mouse1press then
+        pcall(mouse1press)
+        task.delay(0.05, function() pcall(function() mouse1release() end) end)
+    elseif cloneref then
+        -- Some mobile executors expose tap via VirtualInputManager
+        pcall(function()
+            local vim = cloneref(game:GetService("VirtualInputManager"))
+            vim:SendMouseButtonEvent(0, 0, 0, true,  game, 1)
+            task.delay(0.05, function()
+                vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+            end)
+        end)
+    end
+end
+
+local function ShootMurderer()
+    local murderer = GetMurderer()
+    if not murderer then
+        Notify("Shoot", "No murderer found.", 2)
+        return
+    end
+    local char = GetCharacter(murderer)
+    local ap   = GetAimPart(char)
+    if not ap then
+        Notify("Shoot", "Murderer has no target part.", 2)
+        return
+    end
+    -- Snap camera directly at murderer
+    local camCF = GetCamera().CFrame
+    local dir   = (ap.Position - camCF.Position).Unit
+    GetCamera().CFrame = CFrame.new(camCF.Position, camCF.Position + dir)
+    task.wait(0.08)  -- tiny wait so camera settles before firing
+    SimulateLMBClick()
+    Notify("Shot", "Fired at " .. (murderer.DisplayName or murderer.Name), 2)
+end
+
+-- ============================================================
+-- // STANDARD ESP  (Highlight removed — use Role ESP instead)
 -- ============================================================
 local function GetSkelPairs(char)
     if char:FindFirstChild("UpperTorso") then
@@ -423,7 +483,6 @@ local function ClearESPEntry(d)
     pcall(function() d.Distance.Visible  = false end)
     pcall(function() d.Tracer.Visible    = false end)
     pcall(function() d.TeamLabel.Visible = false end)
-    pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
     for _, s in ipairs(d.Skeleton) do pcall(function() s.line.Visible = false end) end
 end
 
@@ -434,7 +493,6 @@ local function DestroyESPEntry(d)
     pcall(function() d.Distance:Remove()  end)
     pcall(function() d.Tracer:Remove()    end)
     pcall(function() d.TeamLabel:Remove() end)
-    pcall(function() d.Highlight:Destroy() end)
     for _, s in ipairs(d.Skeleton) do pcall(function() s.line:Remove() end) end
 end
 
@@ -451,11 +509,6 @@ local function CreateESPForPlayer(player)
     d.Name      = TD("Text");   d.Name.Visible      = false; d.Name.Color      = col; d.Name.Size       = 14; d.Name.Center     = true; d.Name.Outline    = true
     d.Distance  = TD("Text");   d.Distance.Visible  = false; d.Distance.Color  = col; d.Distance.Size   = 12; d.Distance.Center = true; d.Distance.Outline= true
     d.Tracer    = TD("Line");   d.Tracer.Visible    = false; d.Tracer.Color    = col; d.Tracer.Thickness = 1
-    d.Highlight = Instance.new("Highlight")
-    d.Highlight.FillTransparency    = 0.5
-    d.Highlight.OutlineTransparency = 0
-    d.Highlight.FillColor           = col
-    d.Highlight.OutlineColor        = col
     d.TeamLabel      = TD("Text"); d.TeamLabel.Visible = false; d.TeamLabel.Color = State.ESP.TeamColor
     d.TeamLabel.Size = 13; d.TeamLabel.Center = true; d.TeamLabel.Outline = true; d.TeamLabel.Text = "TEAM"
     d.Skeleton = {}; d.lastChar = nil; d.lastColor = col
@@ -486,14 +539,8 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
     local alive  = char ~= nil and root ~= nil and hum ~= nil and hum.Health > 0
     local isTeam = State.ESP.TeamCheck and IsTeammate(player)
 
-    if isTeam and State.ESP.TeamMode == "hide" then
-        pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
-        return
-    end
-    if not alive then
-        pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
-        return
-    end
+    if isTeam and State.ESP.TeamMode == "hide" then return end
+    if not alive then return end
     if char ~= d.lastChar then RebuildSkeleton(d, char) end
 
     local col = isTeam and State.ESP.TeamColor
@@ -503,7 +550,6 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
         d.lastColor = col
         pcall(function()
             d.Box.Color = col; d.Name.Color = col; d.Distance.Color = col; d.Tracer.Color = col
-            d.Highlight.FillColor = col; d.Highlight.OutlineColor = col
             for _, s in ipairs(d.Skeleton) do s.line.Color = col end
         end)
     end
@@ -513,28 +559,14 @@ local function UpdateESPPlayer(player, d, selfRoot, rainbowCol)
     local feetPos    = rootPos - Vector3.new(0, 3, 0)
     local headTopPos = headPos + Vector3.new(0, 0.6, 0)
 
-    local rootSP,    rootOn    = W2S(rootPos)
-    local headSP,    headOn    = W2S(headPos)
-    local feetSP,    _         = W2S(feetPos)
-    local headTopSP, _         = W2S(headTopPos)
+    local rootSP,    rootOn = W2S(rootPos)
+    local headSP,    headOn = W2S(headPos)
+    local feetSP,    _      = W2S(feetPos)
+    local headTopSP, _      = W2S(headTopPos)
 
-    if not rootOn then
-        pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
-        return
-    end
+    if not rootOn then return end
     if State.ESP.MaxDist > 0 and selfRoot
-    and (selfRoot.Position - rootPos).Magnitude > State.ESP.MaxDist then
-        pcall(function() if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end end)
-        return
-    end
-
-    pcall(function()
-        if State.ESP.Highlight and not isTeam then
-            if d.Highlight.Parent ~= char then d.Highlight.Parent = char end
-        else
-            if d.Highlight.Parent ~= nil then d.Highlight.Parent = nil end
-        end
-    end)
+    and (selfRoot.Position - rootPos).Magnitude > State.ESP.MaxDist then return end
 
     if isTeam and State.ESP.TeamMode == "color" then
         pcall(function()
@@ -669,6 +701,7 @@ local function SetupFPSBoost()
     Drop("FPSParticle")
     if State.FPSBoost then
         Lighting.GlobalShadows = false
+        -- QualityLevel wrapped in pcall — not available on all executors/mobile
         pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
         FPSParticleCache = {}
         for _, fx in ipairs(Lighting:GetDescendants()) do
@@ -679,7 +712,9 @@ local function SetupFPSBoost()
             or v:IsA("Sparkles") or v:IsA("Trail") then
                 FPSParticleCache[v] = v.Enabled; pcall(function() v.Enabled = false end)
             end
-            if v:IsA("SurfaceAppearance") then FPSParticleCache[v] = v.Parent; pcall(function() v.Parent = nil end) end
+            if v:IsA("SurfaceAppearance") then
+                FPSParticleCache[v] = v.Parent; pcall(function() v.Parent = nil end)
+            end
         end
         local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
         if atmo then FPSParticleCache[atmo] = atmo.Parent; pcall(function() atmo.Parent = nil end) end
@@ -1000,6 +1035,50 @@ local function SetupAntiFling()
     end))
 end
 
+-- ============================================================
+-- // TELEPORT HANDLER (PC mouse + mobile touch)
+-- ============================================================
+local function HandleTeleport(worldPos)
+    local root = GetRoot(LocalPlayer); if not root then return end
+    local target = worldPos + Vector3.new(0, 3, 0)
+    if State.Movement.ClickTP then
+        root.CFrame = CFrame.new(target)
+    elseif State.Movement.ClickTweenTP and not TweenTPActive then
+        TweenTPActive = true
+        local dist = (target - root.Position).Magnitude
+        local tt   = math.max(0.05, dist / (State.Movement.ClickTweenTPSpeed * 20))
+        local tw   = TweenService:Create(
+            root,
+            TweenInfo.new(tt, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { CFrame = CFrame.new(target) }
+        )
+        root.Anchored = true
+        tw:Play()
+        tw.Completed:Connect(function() root.Anchored = false; TweenTPActive = false end)
+    end
+end
+
+-- PC: existing Mouse.Button1Down path
+Mouse.Button1Down:Connect(function()
+    if State.Movement.ClickTP or State.Movement.ClickTweenTP then
+        if Mouse.Hit then HandleTeleport(Mouse.Hit.Position) end
+    end
+end)
+
+-- Mobile: TouchTap fires when user taps the screen
+UserInputService.TouchTap:Connect(function(positions, processed)
+    if processed then return end
+    if not (State.Movement.ClickTP or State.Movement.ClickTweenTP) then return end
+    if #positions == 0 then return end
+    local pos  = positions[1]
+    local ray  = GetCamera():ScreenPointToRay(pos.X, pos.Y)
+    local rp   = RaycastParams.new()
+    rp.FilterDescendantsInstances = { LocalPlayer.Character or game }
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    local res  = workspace:Raycast(ray.Origin, ray.Direction * 1000, rp)
+    if res then HandleTeleport(res.Position) end
+end)
+
 local function OnCharacterAdded()
     task.wait(0.5); TweenTPActive = false
     if SpinBAV then pcall(function() SpinBAV:Destroy() end); SpinBAV = nil end
@@ -1110,15 +1189,6 @@ end)
 -- ============================================================
 -- // TRIGGERBOT
 -- ============================================================
-local function SimulateLMBClick()
-    if mouse1click then
-        pcall(mouse1click)
-    elseif mouse1press then
-        pcall(mouse1press)
-        task.delay(0.05, function() pcall(function() mouse1release() end) end)
-    end
-end
-
 local function RunTriggerbot(dt)
     if not State.Triggerbot.Enabled then _tbWasInView = false; _tbSpamTimer = 0; return end
     local inView = false
@@ -1168,8 +1238,8 @@ end
 
 local function SerializeState()
     return {
-        Aimbot     = { Enabled=State.Aimbot.Enabled, KeepLocked=State.Aimbot.KeepLocked, Smoothness=State.Aimbot.Smoothness, FOV=State.Aimbot.FOV, Color=C3S(State.Aimbot.Color), LockKey=State.Aimbot.LockKey, WallCheck=State.Aimbot.WallCheck, Prediction=State.Aimbot.Prediction, PredictionStrength=State.Aimbot.PredictionStrength, TeamCheck=State.Aimbot.TeamCheck, RainbowFOV=State.Aimbot.RainbowFOV, RainbowSpeed=State.Aimbot.RainbowSpeed, TargetPart=State.Aimbot.TargetPart },
-        ESP        = { Enabled=State.ESP.Enabled, Box=State.ESP.Box, Skeleton=State.ESP.Skeleton, Names=State.ESP.Names, Distance=State.ESP.Distance, Highlight=State.ESP.Highlight, Tracer=State.ESP.Tracer, Color=C3S(State.ESP.Color), Rainbow=State.ESP.Rainbow, RainbowSpeed=State.ESP.RainbowSpeed, TeamCheck=State.ESP.TeamCheck, TeamMode=State.ESP.TeamMode, TeamColor=C3S(State.ESP.TeamColor), MaxDist=State.ESP.MaxDist },
+        Aimbot     = { Enabled=State.Aimbot.Enabled, KeepLocked=State.Aimbot.KeepLocked, Smoothness=State.Aimbot.Smoothness, FOV=State.Aimbot.FOV, Color=C3S(State.Aimbot.Color), LockKey=State.Aimbot.LockKey, WallCheck=State.Aimbot.WallCheck, Prediction=State.Aimbot.Prediction, PredictionStrength=State.Aimbot.PredictionStrength, TeamCheck=State.Aimbot.TeamCheck, RainbowFOV=State.Aimbot.RainbowFOV, RainbowSpeed=State.Aimbot.RainbowSpeed, TargetPart=State.Aimbot.TargetPart, MobileMode=State.Aimbot.MobileMode },
+        ESP        = { Enabled=State.ESP.Enabled, Box=State.ESP.Box, Skeleton=State.ESP.Skeleton, Names=State.ESP.Names, Distance=State.ESP.Distance, Tracer=State.ESP.Tracer, Color=C3S(State.ESP.Color), Rainbow=State.ESP.Rainbow, RainbowSpeed=State.ESP.RainbowSpeed, TeamCheck=State.ESP.TeamCheck, TeamMode=State.ESP.TeamMode, TeamColor=C3S(State.ESP.TeamColor), MaxDist=State.ESP.MaxDist },
         RoleESP    = { InnocentEnabled=State.RoleESP.InnocentEnabled, SheriffEnabled=State.RoleESP.SheriffEnabled, MurdererEnabled=State.RoleESP.MurdererEnabled, GunDropEnabled=State.RoleESP.GunDropEnabled, InnocentColor=C3S(State.RoleESP.InnocentColor), SheriffColor=C3S(State.RoleESP.SheriffColor), MurdererColor=C3S(State.RoleESP.MurdererColor), GunDropColor=C3S(State.RoleESP.GunDropColor) },
         Movement   = { WalkSpeed=State.Movement.WalkSpeed, WalkSpeedValue=State.Movement.WalkSpeedValue, JumpPower=State.Movement.JumpPower, JumpPowerValue=State.Movement.JumpPowerValue, InfJump=State.Movement.InfJump, Fly=State.Movement.Fly, FlySpeed=State.Movement.FlySpeed, Spin=State.Movement.Spin, SpinSpeed=State.Movement.SpinSpeed, TPWalk=State.Movement.TPWalk, TPWalkTween=State.Movement.TPWalkTween, TPWalkSpeed=State.Movement.TPWalkSpeed, ClickTP=State.Movement.ClickTP, ClickTweenTP=State.Movement.ClickTweenTP, ClickTweenTPSpeed=State.Movement.ClickTweenTPSpeed, Noclip=State.Movement.Noclip, GodMode=State.Movement.GodMode, Orbit=State.Movement.Orbit, OrbitSpeed=State.Movement.OrbitSpeed, OrbitRadius=State.Movement.OrbitRadius, OrbitMode=State.Movement.OrbitMode, OrbitCooldown=State.Movement.OrbitCooldown, HoverPlayer=State.Movement.HoverPlayer, HoverHeight=State.Movement.HoverHeight, HoverSpeed=State.Movement.HoverSpeed, HoverMode=State.Movement.HoverMode },
         Farming    = { CoinFarmSpeed=State.Farming.CoinFarmSpeed, CoinFarmDelay=State.Farming.CoinFarmDelay },
@@ -1204,7 +1274,7 @@ end
 local function CFGSave(name)
     if not writefile then return false, "writefile not available" end
     CFGEnsureFolder()
-    local ok, data   = pcall(SerializeState);               if not ok  then return false, "serialization failed" end
+    local ok, data   = pcall(SerializeState); if not ok then return false, "serialization failed" end
     local ok2, json  = pcall(HttpService.JSONEncode, HttpService, data); if not ok2 then return false, "JSON encode failed" end
     local ok3        = pcall(writefile, CFG_FOLDER .. "/" .. name .. CFG_EXT, json); if not ok3 then return false, "write failed" end
     return true
@@ -1268,7 +1338,7 @@ local function CFGDelete(name)
 end
 
 -- ============================================================
--- // RAYFIELD WINDOW  ← FIXED: removed Icon=0, ShowText, ToggleUIKeybind
+-- // RAYFIELD WINDOW
 -- ============================================================
 local Window = Rayfield:CreateWindow({
     Name                   = "MM2 | EchoX",
@@ -1303,6 +1373,8 @@ AimbotTab:CreateToggle({ Name="Wall Check",    CurrentValue=false, Callback=func
 AimbotTab:CreateToggle({ Name="Prediction",    CurrentValue=false, Callback=function(v) State.Aimbot.Prediction=v end })
 AimbotTab:CreateToggle({ Name="Team Check",    CurrentValue=false, Callback=function(v) State.Aimbot.TeamCheck=v  end })
 AimbotTab:CreateToggle({ Name="Rainbow FOV",   CurrentValue=false, Callback=function(v) State.Aimbot.RainbowFOV=v end })
+AimbotTab:CreateToggle({ Name="Mobile Mode (aim without key)", CurrentValue=false,
+    Callback=function(v) State.Aimbot.MobileMode=v end })
 AimbotTab:CreateSlider({ Name="Prediction Strength", Range={1,200},  Increment=1, Suffix="ms", CurrentValue=65,  Callback=function(v) State.Aimbot.PredictionStrength=v/1000 end })
 AimbotTab:CreateSlider({ Name="Aim Speed",           Range={1,100},  Increment=1, Suffix="%",  CurrentValue=50,  Callback=function(v) State.Aimbot.Smoothness=v/100        end })
 AimbotTab:CreateSlider({ Name="FOV Radius",          Range={10,500}, Increment=5, Suffix="px", CurrentValue=150, Callback=function(v) State.Aimbot.FOV=v                   end })
@@ -1311,11 +1383,14 @@ AimbotTab:CreateColorPicker({ Name="FOV Color", Color=Color3.fromRGB(255,0,0), C
 AimbotTab:CreateSection("Target Bone")
 AimbotTab:CreateDropdown({ Name="Target Part", Options={"Head","Torso","HumanoidRootPart"}, CurrentOption={"Head"}, MultipleOptions=false,
     Callback=function(opts) State.Aimbot.TargetPart=type(opts)=="table" and opts[1] or opts end })
-AimbotTab:CreateSection("Aim Key")
+AimbotTab:CreateSection("Aim Key (PC only)")
 AimbotTab:CreateDropdown({ Name="Aim Hold Key",
     Options={"MouseButton2","MouseButton1","MouseButton3","E","Q","F","Z","X","LeftShift","LeftAlt","LeftControl","R","T","G","H"},
     CurrentOption={"MouseButton2"}, MultipleOptions=false,
     Callback=function(opts) State.Aimbot.LockKey=type(opts)=="table" and opts[1] or opts end })
+AimbotTab:CreateSection("MM2 Actions")
+AimbotTab:CreateButton({ Name="Shoot Murderer",
+    Callback=function() ShootMurderer() end })
 AimbotTab:CreateSection("Triggerbot")
 AimbotTab:CreateToggle({ Name="Enable Triggerbot", CurrentValue=false, Callback=function(v) State.Triggerbot.Enabled=v   end })
 AimbotTab:CreateToggle({ Name="Spam Mode",         CurrentValue=false, Callback=function(v) State.Triggerbot.Spam=v       end })
@@ -1333,7 +1408,6 @@ ESPTab:CreateToggle({ Name="Box",         CurrentValue=false, Callback=function(
 ESPTab:CreateToggle({ Name="Skeleton",    CurrentValue=false, Callback=function(v) State.ESP.Skeleton=v   end })
 ESPTab:CreateToggle({ Name="Names",       CurrentValue=false, Callback=function(v) State.ESP.Names=v      end })
 ESPTab:CreateToggle({ Name="Distance",    CurrentValue=false, Callback=function(v) State.ESP.Distance=v   end })
-ESPTab:CreateToggle({ Name="Highlight",   CurrentValue=false, Callback=function(v) State.ESP.Highlight=v  end })
 ESPTab:CreateToggle({ Name="Tracer",      CurrentValue=false, Callback=function(v) State.ESP.Tracer=v     end })
 ESPTab:CreateToggle({ Name="Rainbow ESP", CurrentValue=false, Callback=function(v) State.ESP.Rainbow=v    end })
 ESPTab:CreateToggle({ Name="Team Check",  CurrentValue=false, Callback=function(v) State.ESP.TeamCheck=v  end })
@@ -1378,7 +1452,7 @@ MovementTab:CreateSection("TP Walk")
 MovementTab:CreateToggle({ Name="TP Walk",    CurrentValue=false, Callback=function(v) State.Movement.TPWalk=v;      SetupTPWalk() end })
 MovementTab:CreateToggle({ Name="Tween Mode", CurrentValue=false, Callback=function(v) State.Movement.TPWalkTween=v; if State.Movement.TPWalk then SetupTPWalk() end end })
 MovementTab:CreateSlider({ Name="TP Walk Speed", Range={1,300}, Increment=1, CurrentValue=50, Callback=function(v) State.Movement.TPWalkSpeed=v end })
-MovementTab:CreateSection("Click Teleport")
+MovementTab:CreateSection("Click Teleport (PC + Mobile)")
 MovementTab:CreateToggle({ Name="Click Tween TP",    CurrentValue=false, Callback=function(v) State.Movement.ClickTweenTP=v; if v then State.Movement.ClickTP=false end end })
 MovementTab:CreateSlider({ Name="Tween TP Speed",    Range={1,100}, Increment=1, CurrentValue=5, Callback=function(v) State.Movement.ClickTweenTPSpeed=v end })
 MovementTab:CreateToggle({ Name="Click TP (Instant)", CurrentValue=false, Callback=function(v) State.Movement.ClickTP=v; if v then State.Movement.ClickTweenTP=false end end })
@@ -1539,7 +1613,7 @@ ConfigsTab:CreateButton({ Name="List Saved Configs",
     end })
 
 -- ============================================================
--- // FOV CIRCLE
+-- // FOV CIRCLE (follows cursor / last touch position)
 -- ============================================================
 local FOV_SEGS = 64
 local FOVLines = {}
@@ -1639,20 +1713,5 @@ Players.PlayerRemoving:Connect(function(player)
     if d then DestroyESPEntry(d); ESPObjects[player] = nil end
 end)
 
-Mouse.Button1Down:Connect(function()
-    local root = GetRoot(LocalPlayer); if not root then return end
-    if State.Movement.ClickTP then
-        root.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
-    elseif State.Movement.ClickTweenTP and not TweenTPActive then
-        TweenTPActive = true
-        local tgt  = Mouse.Hit.Position + Vector3.new(0, 3, 0)
-        local dist = (tgt - root.Position).Magnitude
-        local tt   = math.max(0.05, dist / (State.Movement.ClickTweenTPSpeed * 20))
-        local tw   = TweenService:Create(root, TweenInfo.new(tt, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = CFrame.new(tgt) })
-        root.Anchored = true
-        tw:Play()
-        tw.Completed:Connect(function() root.Anchored = false; TweenTPActive = false end)
-    end
-end)
-
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
 LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
